@@ -50,11 +50,21 @@ class KeeperHubClient:
         self._base_url = (base_url or _DEFAULT_BASE_URL).rstrip("/")
         self._timeout = timeout
         self._http: httpx.AsyncClient | None = None
+        self._http_loop_id: int | None = None
 
     # -- lifecycle ------------------------------------------------------------
 
     def _get_http(self) -> httpx.AsyncClient:
-        if self._http is None or self._http.is_closed:
+        # httpx.AsyncClient binds its connection pool to the running loop on
+        # first use. Sync tool calls go through asyncio.run() which spins up a
+        # fresh loop each time, so we must re-create the client whenever the
+        # active loop differs from the one the cached client was bound to.
+        loop_id = id(asyncio.get_running_loop())
+        if (
+            self._http is None
+            or self._http.is_closed
+            or self._http_loop_id != loop_id
+        ):
             self._http = httpx.AsyncClient(
                 base_url=self._base_url,
                 timeout=self._timeout,
@@ -65,6 +75,7 @@ class KeeperHubClient:
                     "Accept": "application/json",
                 },
             )
+            self._http_loop_id = loop_id
         return self._http
 
     async def aclose(self) -> None:

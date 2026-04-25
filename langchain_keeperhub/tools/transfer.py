@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from typing import Any, Optional, Type
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
+from langchain_keeperhub._async_utils import run_sync
 from langchain_keeperhub.client import KeeperHubClient
 
 
@@ -63,7 +63,7 @@ class TransferFundsTool(BaseTool):
     model_config = {"arbitrary_types_allowed": True}
 
     def _run(self, **kwargs: Any) -> str:
-        return asyncio.get_event_loop().run_until_complete(self._arun(**kwargs))
+        return run_sync(self._arun(**kwargs))
 
     async def _arun(self, **kwargs: Any) -> str:
         result = await self.client.transfer(
