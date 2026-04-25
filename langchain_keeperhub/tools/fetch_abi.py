@@ -1,0 +1,53 @@
+"""FetchContractABITool — fetch verified ABI from block explorer."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from typing import Any, Type
+
+from langchain_core.tools import BaseTool
+from pydantic import BaseModel, Field
+
+from langchain_keeperhub.client import KeeperHubClient
+
+
+class FetchContractABIInput(BaseModel):
+    """Input schema for FetchContractABITool."""
+
+    chain_id: str = Field(
+        description='Chain ID as string (e.g. "1" for Ethereum, "8453" for Base).'
+    )
+    address: str = Field(
+        description="Contract address to fetch the ABI for (0x-prefixed)."
+    )
+
+
+class FetchContractABITool(BaseTool):
+    """Fetch the ABI for a verified smart contract from the block explorer.
+
+    Useful before calling ``contract_call`` when you need to know
+    available functions, their parameters, and return types.
+    """
+
+    name: str = "keeperhub_fetch_contract_abi"
+    description: str = (
+        "Fetch the ABI of a verified smart contract from its chain's block "
+        "explorer via KeeperHub. Returns the ABI JSON array with function "
+        "signatures, inputs, and outputs. Use this to discover callable "
+        "functions before using contract_call."
+    )
+    args_schema: Type[BaseModel] = FetchContractABIInput
+    client: KeeperHubClient = Field(exclude=True)
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    def _run(self, **kwargs: Any) -> str:
+        return asyncio.get_event_loop().run_until_complete(self._arun(**kwargs))
+
+    async def _arun(self, **kwargs: Any) -> str:
+        result = await self.client.fetch_abi(
+            chain_id=kwargs["chain_id"],
+            address=kwargs["address"],
+        )
+        return json.dumps(result)
