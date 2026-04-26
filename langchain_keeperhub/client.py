@@ -65,6 +65,7 @@ class KeeperHubClient:
         self._timeout = timeout
         self._http: httpx.AsyncClient | None = None
         self._http_loop_id: int | None = None
+        self._network_alias_to_chain_id: dict[str, str] | None = None
 
     # -- lifecycle ------------------------------------------------------------
 
@@ -108,6 +109,45 @@ class KeeperHubClient:
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
         await self.aclose()
+
+    async def _resolve_network(self, network: str) -> str:
+        """Resolve network aliases (name/id) to a canonical chain ID string."""
+        raw = str(network).strip()
+        if not raw:
+            raise ValueError("network is required.")
+
+        if self._network_alias_to_chain_id is None:
+            chains = await self.list_chains(include_disabled=True)
+            data = chains.get("data", [])
+            alias_map: dict[str, str] = {}
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                chain_id = item.get("chainId")
+                if chain_id is None:
+                    continue
+                chain_id_str = str(chain_id)
+                aliases = {
+                    chain_id_str.lower(),
+                    str(item.get("id", "")).strip().lower(),
+                    str(item.get("name", "")).strip().lower(),
+                }
+                aliases.discard("")
+                for alias in aliases:
+                    alias_map.setdefault(alias, chain_id_str)
+            self._network_alias_to_chain_id = alias_map
+
+        resolved = self._network_alias_to_chain_id.get(raw.lower())
+        if resolved is not None:
+            return resolved
+
+        valid = sorted(self._network_alias_to_chain_id.keys())
+        sample = ", ".join(valid[:10])
+        suffix = ", ..." if len(valid) > 10 else ""
+        raise ValueError(
+            f"Unsupported network '{network}'. "
+            f"Use one of: {sample}{suffix}"
+        )
 
     # -- internal request plumbing -------------------------------------------
 
@@ -214,7 +254,7 @@ class KeeperHubClient:
     ) -> dict[str, Any]:
         """POST /api/execute/transfer — send native or ERC-20 tokens."""
         payload: dict[str, Any] = {
-            "network": network,
+            "network": await self._resolve_network(network),
             "recipientAddress": recipient_address,
             "amount": amount,
         }
@@ -240,7 +280,7 @@ class KeeperHubClient:
         """POST /api/execute/contract-call — read or write a smart contract."""
         payload: dict[str, Any] = {
             "contractAddress": contract_address,
-            "network": network,
+            "network": await self._resolve_network(network),
             "functionName": function_name,
         }
         if function_args is not None:
@@ -269,7 +309,7 @@ class KeeperHubClient:
         """POST /api/execute/check-and-execute — conditional execution."""
         payload: dict[str, Any] = {
             "contractAddress": contract_address,
-            "network": network,
+            "network": await self._resolve_network(network),
             "functionName": function_name,
             "condition": condition,
             "action": action,

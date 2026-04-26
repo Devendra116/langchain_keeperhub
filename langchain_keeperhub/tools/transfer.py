@@ -9,7 +9,7 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from langchain_keeperhub._async_utils import run_sync
-from langchain_keeperhub._types import EvmAddress
+from langchain_keeperhub._types import EvmAddress, PositiveDecimalString
 from langchain_keeperhub.client import KeeperHubClient
 
 
@@ -38,9 +38,9 @@ class TransferFundsInput(BaseModel):
             "Omit for native token (ETH/MATIC/etc.) transfers."
         ),
     )
-    gas_limit_multiplier: Optional[str] = Field(
+    gas_limit_multiplier: Optional[PositiveDecimalString] = Field(
         default=None,
-        description='Gas limit multiplier (e.g. "1.5" for 50%% buffer).',
+        description='Gas limit multiplier as a positive decimal string (e.g. "1.5" for 50% buffer).',
     )
 
 

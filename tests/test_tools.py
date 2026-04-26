@@ -129,3 +129,44 @@ def test_check_and_execute_input_rejects_invalid_action_address():
                 },
             }
         )
+
+
+def test_transfer_input_rejects_invalid_gas_limit_multiplier():
+    with pytest.raises(ValidationError):
+        TransferFundsInput.model_validate(
+            {
+                "network": "ethereum",
+                "recipient_address": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+                "amount": "1",
+                "gas_limit_multiplier": "1.2x",
+            }
+        )
+
+
+def test_contract_call_input_rejects_non_positive_gas_limit_multiplier():
+    with pytest.raises(ValidationError):
+        ContractCallInput.model_validate(
+            {
+                "contract_address": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+                "network": "ethereum",
+                "function_name": "balanceOf",
+                "gas_limit_multiplier": "0",
+            }
+        )
+
+
+def test_check_and_execute_action_rejects_invalid_gas_limit_multiplier():
+    with pytest.raises(ValidationError):
+        CheckAndExecuteInput.model_validate(
+            {
+                "contract_address": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+                "network": "ethereum",
+                "function_name": "balanceOf",
+                "condition": {"operator": "gt", "value": "100"},
+                "action": {
+                    "contractAddress": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+                    "functionName": "transfer",
+                    "gasLimitMultiplier": "50%",
+                },
+            }
+        )

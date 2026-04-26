@@ -106,6 +106,12 @@ async def test_fetch_abi(client: KeeperHubClient):
 
 @respx.mock
 async def test_transfer(client: KeeperHubClient):
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 1, "name": "ethereum", "id": "ethereum"}]},
+        )
+    )
     respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
         return_value=Response(
             200, json={"executionId": "direct_42", "status": "completed"}
@@ -123,6 +129,12 @@ async def test_transfer(client: KeeperHubClient):
 
 @respx.mock
 async def test_transfer_with_token(client: KeeperHubClient):
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 8453, "name": "base", "id": "base"}]},
+        )
+    )
     route = respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
         return_value=Response(
             200, json={"executionId": "direct_43", "status": "completed"}
@@ -144,6 +156,12 @@ async def test_transfer_with_token(client: KeeperHubClient):
 
 @respx.mock
 async def test_contract_call_read(client: KeeperHubClient):
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 1, "name": "ethereum", "id": "ethereum"}]},
+        )
+    )
     respx.post(f"{TEST_BASE_URL}/api/execute/contract-call").mock(
         return_value=Response(200, json={"result": "1500000000000000000"})
     )
@@ -162,6 +180,12 @@ async def test_contract_call_read(client: KeeperHubClient):
 
 @respx.mock
 async def test_check_and_execute_not_met(client: KeeperHubClient):
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 1, "name": "ethereum", "id": "ethereum"}]},
+        )
+    )
     respx.post(f"{TEST_BASE_URL}/api/execute/check-and-execute").mock(
         return_value=Response(
             200,
@@ -227,6 +251,12 @@ async def test_401_raises_auth_error(client: KeeperHubClient):
 
 @respx.mock
 async def test_422_raises_wallet_error(client: KeeperHubClient):
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 1, "name": "ethereum", "id": "ethereum"}]},
+        )
+    )
     respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
         return_value=Response(422, json={"error": "Wallet not configured"})
     )
@@ -274,6 +304,12 @@ async def test_get_network_error_retries_three_times(client: KeeperHubClient):
 
 @respx.mock
 async def test_post_network_error_does_not_retry(client: KeeperHubClient):
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 1, "name": "ethereum", "id": "ethereum"}]},
+        )
+    )
     route = respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
         side_effect=httpx.ReadTimeout("network timeout")
     )
@@ -319,3 +355,40 @@ async def test_get_http_closes_previous_client_on_loop_change(
     assert first is not second
     assert first.is_closed
     assert not second.is_closed
+
+
+@respx.mock
+async def test_write_network_is_normalized_to_chain_id(client: KeeperHubClient):
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 1, "name": "ethereum", "id": "eth-main"}]},
+        )
+    )
+    route = respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
+        return_value=Response(200, json={"executionId": "direct_44"})
+    )
+    await client.transfer(
+        network="ethereum",
+        recipient_address="0xabc",
+        amount="1",
+    )
+    assert b'"network":"1"' in route.calls.last.request.content
+    await client.aclose()
+
+
+@respx.mock
+async def test_write_network_unknown_fails_fast(client: KeeperHubClient):
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 1, "name": "ethereum", "id": "eth-main"}]},
+        )
+    )
+    with pytest.raises(ValueError, match="Unsupported network"):
+        await client.transfer(
+            network="unknown-net",
+            recipient_address="0xabc",
+            amount="1",
+        )
+    await client.aclose()

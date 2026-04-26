@@ -9,7 +9,7 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from langchain_keeperhub._async_utils import run_sync
-from langchain_keeperhub._types import EvmAddress
+from langchain_keeperhub._types import EvmAddress, PositiveDecimalString
 from langchain_keeperhub.client import KeeperHubClient
 
 
@@ -31,7 +31,7 @@ class ActionInput(BaseModel):
     function_name: str = Field(alias="functionName")
     function_args: str | None = Field(default=None, alias="functionArgs")
     abi: str | None = None
-    gas_limit_multiplier: str | None = Field(
+    gas_limit_multiplier: PositiveDecimalString | None = Field(
         default=None, alias="gasLimitMultiplier"
     )
 

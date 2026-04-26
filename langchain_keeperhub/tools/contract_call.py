@@ -9,7 +9,7 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from langchain_keeperhub._async_utils import run_sync
-from langchain_keeperhub._types import EvmAddress
+from langchain_keeperhub._types import EvmAddress, PositiveDecimalString
 from langchain_keeperhub.client import KeeperHubClient
 
 
@@ -44,9 +44,9 @@ class ContractCallInput(BaseModel):
         default=None,
         description="ETH value in wei to send with a payable function call.",
     )
-    gas_limit_multiplier: Optional[str] = Field(
+    gas_limit_multiplier: Optional[PositiveDecimalString] = Field(
         default=None,
-        description='Gas limit multiplier (e.g. "1.2").',
+        description='Gas limit multiplier as a positive decimal string (e.g. "1.2").',
     )
 
 
