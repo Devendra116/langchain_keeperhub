@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List
-
-from langchain_core.tools import BaseTool
-from pydantic import Field, model_validator
+from langchain_core.tools import BaseTool, BaseToolkit
 
 from langchain_keeperhub.client import KeeperHubClient
 from langchain_keeperhub.tools.check_and_execute import CheckAndExecuteTool
@@ -16,7 +13,7 @@ from langchain_keeperhub.tools.list_chains import ListChainsTool
 from langchain_keeperhub.tools.transfer import TransferFundsTool
 
 
-class KeeperHubToolkit:
+class KeeperHubToolkit(BaseToolkit):
     """Bundle of LangChain tools for reliable Web3 execution via KeeperHub.
 
     Usage::
@@ -47,7 +44,7 @@ class KeeperHubToolkit:
         """The shared HTTP client used by all tools."""
         return self._client
 
-    def get_tools(self) -> List[BaseTool]:
+    def get_tools(self) -> list[BaseTool]:
         """Return the list of LangChain tools backed by this toolkit's client."""
         c = self._client
         return [

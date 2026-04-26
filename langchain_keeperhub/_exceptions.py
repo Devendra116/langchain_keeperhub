@@ -62,14 +62,16 @@ class ServerError(KeeperHubError):
 _STATUS_MAP: dict[int, type[KeeperHubError]] = {
     401: AuthenticationError,
     404: NotFoundError,
-    429: RateLimitError,
 }
 
 
-def raise_for_status(status_code: int, body: dict[str, Any]) -> None:
+def raise_for_status(status_code: int, body: Any) -> None:
     """Raise the appropriate typed exception for a non-2xx response."""
     if 200 <= status_code < 300:
         return
+
+    if not isinstance(body, dict):
+        body = {}
 
     error_msg = body.get("error", body.get("message", "Unknown error"))
     details = body.get("details", "")

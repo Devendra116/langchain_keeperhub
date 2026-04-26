@@ -12,6 +12,7 @@ from langchain_keeperhub._exceptions import (
     AuthenticationError,
     KeeperHubError,
     RateLimitError,
+    ServerError,
     ValidationError,
     WalletNotConfiguredError,
 )
@@ -230,6 +231,16 @@ async def test_429_retries_then_raises(client: KeeperHubClient):
         )
     )
     with pytest.raises(RateLimitError):
+        await client.list_chains()
+    await client.aclose()
+
+
+@respx.mock
+async def test_non_dict_error_body_does_not_crash(client: KeeperHubClient):
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(502, json=["upstream timeout"])
+    )
+    with pytest.raises(ServerError, match="Unknown error"):
         await client.list_chains()
     await client.aclose()
 
