@@ -9,13 +9,14 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from langchain_keeperhub._async_utils import run_sync
+from langchain_keeperhub._types import EvmAddress
 from langchain_keeperhub.client import KeeperHubClient
 
 
 class ContractCallInput(BaseModel):
     """Input schema for ContractCallTool."""
 
-    contract_address: str = Field(
+    contract_address: EvmAddress = Field(
         description="Smart contract address (0x-prefixed)."
     )
     network: str = Field(

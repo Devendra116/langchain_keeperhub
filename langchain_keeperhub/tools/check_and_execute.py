@@ -9,6 +9,7 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from langchain_keeperhub._async_utils import run_sync
+from langchain_keeperhub._types import EvmAddress
 from langchain_keeperhub.client import KeeperHubClient
 
 
@@ -26,7 +27,7 @@ class ConditionInput(BaseModel):
 class ActionInput(BaseModel):
     """Write action to execute when the condition is met."""
 
-    contract_address: str = Field(alias="contractAddress")
+    contract_address: EvmAddress = Field(alias="contractAddress")
     function_name: str = Field(alias="functionName")
     function_args: str | None = Field(default=None, alias="functionArgs")
     abi: str | None = None
@@ -40,7 +41,7 @@ class ActionInput(BaseModel):
 class CheckAndExecuteInput(BaseModel):
     """Input schema for CheckAndExecuteTool."""
 
-    contract_address: str = Field(
+    contract_address: EvmAddress = Field(
         description="Contract address to read from (0x-prefixed)."
     )
     network: str = Field(

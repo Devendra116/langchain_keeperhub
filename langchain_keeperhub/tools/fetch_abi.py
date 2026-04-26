@@ -9,6 +9,7 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from langchain_keeperhub._async_utils import run_sync
+from langchain_keeperhub._types import EvmAddress
 from langchain_keeperhub.client import KeeperHubClient
 
 
@@ -18,7 +19,7 @@ class FetchContractABIInput(BaseModel):
     chain_id: str = Field(
         description='Chain ID as string (e.g. "1" for Ethereum, "8453" for Base).'
     )
-    address: str = Field(
+    address: EvmAddress = Field(
         description="Contract address to fetch the ABI for (0x-prefixed)."
     )
 

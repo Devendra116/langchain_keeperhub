@@ -9,6 +9,7 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from langchain_keeperhub._async_utils import run_sync
+from langchain_keeperhub._types import EvmAddress
 from langchain_keeperhub.client import KeeperHubClient
 
 
@@ -21,7 +22,7 @@ class TransferFundsInput(BaseModel):
             "or chain ID as string."
         )
     )
-    recipient_address: str = Field(
+    recipient_address: EvmAddress = Field(
         description="Destination wallet address (0x-prefixed, 42 chars)."
     )
     amount: str = Field(
@@ -30,7 +31,7 @@ class TransferFundsInput(BaseModel):
             'or "10" for 10 USDC).'
         )
     )
-    token_address: Optional[str] = Field(
+    token_address: Optional[EvmAddress] = Field(
         default=None,
         description=(
             "ERC-20 token contract address. "
