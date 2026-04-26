@@ -1,13 +1,12 @@
 """GetExecutionStatusTool — poll execution status by ID."""
 
 from __future__ import annotations
+
 from typing import Any, Type
 
-from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
-from langchain_keeperhub._async_utils import run_sync
-from langchain_keeperhub.client import KeeperHubClient
+from langchain_keeperhub.tools._base import _KeeperHubToolBase
 
 
 class GetExecutionStatusInput(BaseModel):
@@ -21,7 +20,7 @@ class GetExecutionStatusInput(BaseModel):
     )
 
 
-class GetExecutionStatusTool(BaseTool):
+class GetExecutionStatusTool(_KeeperHubToolBase):
     """Poll the status of a KeeperHub execution.
 
     Returns status (pending/running/completed/failed), transaction hash,
@@ -36,12 +35,6 @@ class GetExecutionStatusTool(BaseTool):
         "Use this after transfer or contract_call to confirm completion."
     )
     args_schema: Type[BaseModel] = GetExecutionStatusInput
-    client: KeeperHubClient = Field(exclude=True)
-
-    model_config = {"arbitrary_types_allowed": True}
-
-    def _run(self, **kwargs: Any) -> dict[str, Any]:
-        return run_sync(self._arun(**kwargs))
 
     async def _arun(self, **kwargs: Any) -> dict[str, Any]:
         return await self.client.get_execution_status(kwargs["execution_id"])

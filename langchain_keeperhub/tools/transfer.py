@@ -1,14 +1,13 @@
 """TransferFundsTool — send native or ERC-20 tokens via KeeperHub."""
 
 from __future__ import annotations
+
 from typing import Any, Optional, Type
 
-from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
-from langchain_keeperhub._async_utils import run_sync
 from langchain_keeperhub._types import EvmAddress, PositiveDecimalString
-from langchain_keeperhub.client import KeeperHubClient
+from langchain_keeperhub.tools._base import _KeeperHubToolBase
 
 
 class TransferFundsInput(BaseModel):
@@ -42,7 +41,7 @@ class TransferFundsInput(BaseModel):
     )
 
 
-class TransferFundsTool(BaseTool):
+class TransferFundsTool(_KeeperHubToolBase):
     """Send native tokens or ERC-20 tokens to an address on any supported chain.
 
     Returns a JSON object with ``execution_id`` and ``status``.
@@ -57,12 +56,6 @@ class TransferFundsTool(BaseTool):
         "Returns an execution_id to poll with get_execution_status."
     )
     args_schema: Type[BaseModel] = TransferFundsInput
-    client: KeeperHubClient = Field(exclude=True)
-
-    model_config = {"arbitrary_types_allowed": True}
-
-    def _run(self, **kwargs: Any) -> dict[str, Any]:
-        return run_sync(self._arun(**kwargs))
 
     async def _arun(self, **kwargs: Any) -> dict[str, Any]:
         return await self.client.transfer(

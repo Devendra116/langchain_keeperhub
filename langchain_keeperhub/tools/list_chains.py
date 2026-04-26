@@ -1,13 +1,12 @@
 """ListChainsTool — discover supported blockchain networks."""
 
 from __future__ import annotations
+
 from typing import Any, Type
 
-from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
-from langchain_keeperhub._async_utils import run_sync
-from langchain_keeperhub.client import KeeperHubClient
+from langchain_keeperhub.tools._base import _KeeperHubToolBase
 
 
 class ListChainsInput(BaseModel):
@@ -19,7 +18,7 @@ class ListChainsInput(BaseModel):
     )
 
 
-class ListChainsTool(BaseTool):
+class ListChainsTool(_KeeperHubToolBase):
     """List all blockchain networks supported by KeeperHub.
 
     Returns chain IDs, names, symbols, explorer URLs, and testnet flags.
@@ -35,12 +34,6 @@ class ListChainsTool(BaseTool):
         "contract_call if you need to confirm a network name or chain ID."
     )
     args_schema: Type[BaseModel] = ListChainsInput
-    client: KeeperHubClient = Field(exclude=True)
-
-    model_config = {"arbitrary_types_allowed": True}
-
-    def _run(self, **kwargs: Any) -> dict[str, Any]:
-        return run_sync(self._arun(**kwargs))
 
     async def _arun(self, **kwargs: Any) -> dict[str, Any]:
         return await self.client.list_chains(

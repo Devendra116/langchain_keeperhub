@@ -1,14 +1,13 @@
 """CheckAndExecuteTool — conditional read-then-write in one call."""
 
 from __future__ import annotations
+
 from typing import Any, Type
 
-from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
-from langchain_keeperhub._async_utils import run_sync
 from langchain_keeperhub._types import EvmAddress, PositiveDecimalString
-from langchain_keeperhub.client import KeeperHubClient
+from langchain_keeperhub.tools._base import _KeeperHubToolBase
 
 
 class ConditionInput(BaseModel):
@@ -62,7 +61,7 @@ class CheckAndExecuteInput(BaseModel):
     )
 
 
-class CheckAndExecuteTool(BaseTool):
+class CheckAndExecuteTool(_KeeperHubToolBase):
     """Read a contract value, evaluate a condition, and execute a write if met.
 
     Combines a read + conditional write in a single atomic API call.
@@ -77,12 +76,6 @@ class CheckAndExecuteTool(BaseTool):
         "condition is met. Returns condition result and execution_id if triggered."
     )
     args_schema: Type[BaseModel] = CheckAndExecuteInput
-    client: KeeperHubClient = Field(exclude=True)
-
-    model_config = {"arbitrary_types_allowed": True}
-
-    def _run(self, **kwargs: Any) -> dict[str, Any]:
-        return run_sync(self._arun(**kwargs))
 
     @staticmethod
     def _serialize_action(action: ActionInput | dict[str, Any]) -> dict[str, Any]:
