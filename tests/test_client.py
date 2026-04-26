@@ -2,23 +2,33 @@
 
 from __future__ import annotations
 
+import json
+from unittest.mock import Mock
+
 import pytest
 import respx
 import httpx
-from unittest.mock import Mock
 from httpx import Response
 
 from langchain_keeperhub._exceptions import (
     AuthenticationError,
     KeeperHubError,
+    NotFoundError,
     RateLimitError,
     ServerError,
+    SpendingCapExceededError,
     ValidationError,
     WalletNotConfiguredError,
+    raise_for_status,
 )
-from langchain_keeperhub.client import KeeperHubClient
+from langchain_keeperhub._types import _validate_positive_decimal_string
+from langchain_keeperhub.client import KeeperHubClient, _redact
 
 from .conftest import TEST_API_KEY, TEST_BASE_URL
+
+
+def _sent_json(route: respx.Route) -> dict[str, object]:
+    return json.loads(route.calls.last.request.content)
 
 
 
@@ -34,6 +44,20 @@ def test_env_var_fallback(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("KEEPERHUB_API_KEY", "kh_from_env")
     c = KeeperHubClient()
     assert c._api_key == "kh_from_env"
+
+
+def test_allowed_chain_ids_rejects_empty_values():
+    with pytest.raises(ValueError, match="allowed_chain_ids cannot contain empty"):
+        KeeperHubClient(api_key=TEST_API_KEY, allowed_chain_ids={" "})
+
+
+def test_redact_shortens_large_abi_payload():
+    assert _redact({"abi": "x" * 65}) == {"abi": "<abi 65 chars>"}
+
+
+def test_positive_decimal_validator_rejects_invalid_decimal():
+    with pytest.raises(ValueError, match="positive decimal string"):
+        _validate_positive_decimal_string("not-a-decimal")
 
 
 @respx.mock
@@ -78,6 +102,19 @@ async def test_list_chains(client: KeeperHubClient):
     await client.aclose()
 
 
+@respx.mock
+async def test_list_chains_include_disabled_sets_query_param(
+    client: KeeperHubClient,
+):
+    route = respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(200, json={"data": []})
+    )
+    await client.list_chains(include_disabled=True)
+
+    assert route.calls.last.request.url.params["includeDisabled"] == "true"
+    await client.aclose()
+
+
 # -- fetch_abi ----------------------------------------------------------------
 
 
@@ -112,7 +149,7 @@ async def test_transfer(client: KeeperHubClient):
             json={"data": [{"chainId": 1, "name": "ethereum", "id": "ethereum"}]},
         )
     )
-    respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
+    route = respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
         return_value=Response(
             200, json={"executionId": "direct_42", "status": "completed"}
         )
@@ -124,6 +161,11 @@ async def test_transfer(client: KeeperHubClient):
     )
     assert result["executionId"] == "direct_42"
     assert result["status"] == "completed"
+    assert _sent_json(route) == {
+        "network": "1",
+        "recipientAddress": "0xabc",
+        "amount": "0.1",
+    }
     await client.aclose()
 
 
@@ -146,8 +188,42 @@ async def test_transfer_with_token(client: KeeperHubClient):
         amount="10",
         token_address="0xUSDC",
     )
-    sent_body = route.calls.last.request.content
-    assert b"tokenAddress" in sent_body
+    assert _sent_json(route) == {
+        "network": "8453",
+        "recipientAddress": "0xabc",
+        "amount": "10",
+        "tokenAddress": "0xUSDC",
+    }
+    await client.aclose()
+
+
+@respx.mock
+async def test_transfer_includes_optional_token_config_and_gas_multiplier(
+    client: KeeperHubClient,
+):
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 8453, "name": "base", "id": "base"}]},
+        )
+    )
+    route = respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
+        return_value=Response(200, json={"executionId": "direct_44"})
+    )
+    await client.transfer(
+        network="base",
+        recipient_address="0xabc",
+        amount="10",
+        token_config='{"decimals":6}',
+        gas_limit_multiplier="1.5",
+    )
+    assert _sent_json(route) == {
+        "network": "8453",
+        "recipientAddress": "0xabc",
+        "amount": "10",
+        "tokenConfig": '{"decimals":6}',
+        "gasLimitMultiplier": "1.5",
+    }
     await client.aclose()
 
 
@@ -162,7 +238,7 @@ async def test_contract_call_read(client: KeeperHubClient):
             json={"data": [{"chainId": 1, "name": "ethereum", "id": "ethereum"}]},
         )
     )
-    respx.post(f"{TEST_BASE_URL}/api/execute/contract-call").mock(
+    route = respx.post(f"{TEST_BASE_URL}/api/execute/contract-call").mock(
         return_value=Response(200, json={"result": "1500000000000000000"})
     )
     result = await client.contract_call(
@@ -172,6 +248,45 @@ async def test_contract_call_read(client: KeeperHubClient):
         function_args='["0xabc"]',
     )
     assert result["result"] == "1500000000000000000"
+    assert _sent_json(route) == {
+        "contractAddress": "0xDAI",
+        "network": "1",
+        "functionName": "balanceOf",
+        "functionArgs": '["0xabc"]',
+    }
+    await client.aclose()
+
+
+@respx.mock
+async def test_contract_call_write_includes_optional_fields(
+    client: KeeperHubClient,
+):
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 1, "name": "ethereum", "id": "ethereum"}]},
+        )
+    )
+    route = respx.post(f"{TEST_BASE_URL}/api/execute/contract-call").mock(
+        return_value=Response(200, json={"executionId": "direct_47"})
+    )
+    result = await client.contract_call(
+        contract_address="0xDAI",
+        network="ethereum",
+        function_name="deposit",
+        abi='[{"type":"function","name":"deposit"}]',
+        value="1000000000000000000",
+        gas_limit_multiplier="1.2",
+    )
+    assert result["executionId"] == "direct_47"
+    assert _sent_json(route) == {
+        "contractAddress": "0xDAI",
+        "network": "1",
+        "functionName": "deposit",
+        "abi": '[{"type":"function","name":"deposit"}]',
+        "value": "1000000000000000000",
+        "gasLimitMultiplier": "1.2",
+    }
     await client.aclose()
 
 
@@ -186,7 +301,7 @@ async def test_check_and_execute_not_met(client: KeeperHubClient):
             json={"data": [{"chainId": 1, "name": "ethereum", "id": "ethereum"}]},
         )
     )
-    respx.post(f"{TEST_BASE_URL}/api/execute/check-and-execute").mock(
+    route = respx.post(f"{TEST_BASE_URL}/api/execute/check-and-execute").mock(
         return_value=Response(
             200,
             json={
@@ -212,6 +327,52 @@ async def test_check_and_execute_not_met(client: KeeperHubClient):
         },
     )
     assert result["executed"] is False
+    assert _sent_json(route) == {
+        "contractAddress": "0xDAI",
+        "network": "1",
+        "functionName": "balanceOf",
+        "condition": {"operator": "gt", "value": "1000"},
+        "action": {
+            "contractAddress": "0xDAI",
+            "functionName": "transfer",
+            "functionArgs": '["0xabc", "500"]',
+        },
+    }
+    await client.aclose()
+
+
+@respx.mock
+async def test_check_and_execute_includes_optional_read_fields(
+    client: KeeperHubClient,
+):
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 1, "name": "ethereum", "id": "ethereum"}]},
+        )
+    )
+    route = respx.post(f"{TEST_BASE_URL}/api/execute/check-and-execute").mock(
+        return_value=Response(200, json={"executed": True})
+    )
+    result = await client.check_and_execute(
+        contract_address="0xDAI",
+        network="ethereum",
+        function_name="balanceOf",
+        function_args='["0xabc"]',
+        abi='[{"type":"function","name":"balanceOf"}]',
+        condition={"operator": "gt", "value": "1000"},
+        action={"contractAddress": "0xDAI", "functionName": "transfer"},
+    )
+    assert result["executed"] is True
+    assert _sent_json(route) == {
+        "contractAddress": "0xDAI",
+        "network": "1",
+        "functionName": "balanceOf",
+        "condition": {"operator": "gt", "value": "1000"},
+        "action": {"contractAddress": "0xDAI", "functionName": "transfer"},
+        "functionArgs": '["0xabc"]',
+        "abi": '[{"type":"function","name":"balanceOf"}]',
+    }
     await client.aclose()
 
 
@@ -268,8 +429,34 @@ async def test_422_raises_wallet_error(client: KeeperHubClient):
 
 
 @respx.mock
-async def test_429_retries_then_raises(client: KeeperHubClient):
+async def test_422_spending_cap_raises_spending_cap_error(
+    client: KeeperHubClient,
+):
     respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 1, "name": "ethereum", "id": "ethereum"}]},
+        )
+    )
+    respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
+        return_value=Response(
+            422,
+            json={
+                "error": "Spending cap exceeded",
+                "code": "SPENDING_CAP_EXCEEDED",
+            },
+        )
+    )
+    with pytest.raises(SpendingCapExceededError):
+        await client.transfer(
+            network="ethereum", recipient_address="0x1", amount="1"
+        )
+    await client.aclose()
+
+
+@respx.mock
+async def test_429_retries_then_raises(client: KeeperHubClient):
+    route = respx.get(f"{TEST_BASE_URL}/api/chains").mock(
         return_value=Response(
             429,
             json={"error": "Rate limited"},
@@ -278,6 +465,52 @@ async def test_429_retries_then_raises(client: KeeperHubClient):
     )
     with pytest.raises(RateLimitError):
         await client.list_chains()
+    assert route.call_count == 3
+    await client.aclose()
+
+
+@respx.mock
+async def test_get_429_retry_can_recover(client: KeeperHubClient):
+    route = respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        side_effect=[
+            Response(
+                429,
+                json={"error": "Rate limited"},
+                headers={"Retry-After": "0"},
+            ),
+            Response(200, json={"data": [{"chainId": 1}]}),
+        ]
+    )
+
+    result = await client.list_chains()
+
+    assert result == {"data": [{"chainId": 1}]}
+    assert route.call_count == 2
+    await client.aclose()
+
+
+@respx.mock
+async def test_post_429_raises_without_retry(client: KeeperHubClient):
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 1, "name": "ethereum", "id": "ethereum"}]},
+        )
+    )
+    route = respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
+        return_value=Response(
+            429,
+            json={"error": "Rate limited"},
+            headers={"Retry-After": "0"},
+        )
+    )
+    with pytest.raises(RateLimitError, match="Rate limit exceeded"):
+        await client.transfer(
+            network="ethereum",
+            recipient_address="0x1",
+            amount="1",
+        )
+    assert route.call_count == 1
     await client.aclose()
 
 
@@ -291,6 +524,26 @@ async def test_non_dict_error_body_does_not_crash(client: KeeperHubClient):
     await client.aclose()
 
 
+def test_raise_for_status_includes_details():
+    with pytest.raises(KeeperHubError, match="Bad request: bad network"):
+        raise_for_status(400, {"error": "Bad request", "details": "bad network"})
+
+
+def test_raise_for_status_maps_404():
+    with pytest.raises(NotFoundError):
+        raise_for_status(404, {"message": "Missing"})
+
+
+def test_raise_for_status_maps_429():
+    with pytest.raises(RateLimitError):
+        raise_for_status(429, {"error": "Rate limited"})
+
+
+def test_raise_for_status_maps_generic_client_error():
+    with pytest.raises(KeeperHubError):
+        raise_for_status(400, {"error": "Bad request"})
+
+
 @respx.mock
 async def test_get_network_error_retries_three_times(client: KeeperHubClient):
     route = respx.get(f"{TEST_BASE_URL}/api/chains").mock(
@@ -299,6 +552,22 @@ async def test_get_network_error_retries_three_times(client: KeeperHubClient):
     with pytest.raises(KeeperHubError, match="after 3 network attempts"):
         await client.list_chains()
     assert route.call_count == 3
+    await client.aclose()
+
+
+@respx.mock
+async def test_get_network_error_retry_can_recover(client: KeeperHubClient):
+    route = respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        side_effect=[
+            httpx.ReadTimeout("network timeout"),
+            Response(200, json={"data": [{"chainId": 1}]}),
+        ]
+    )
+
+    result = await client.list_chains()
+
+    assert result == {"data": [{"chainId": 1}]}
+    assert route.call_count == 2
     await client.aclose()
 
 
@@ -373,7 +642,7 @@ async def test_write_network_is_normalized_to_chain_id(client: KeeperHubClient):
         recipient_address="0xabc",
         amount="1",
     )
-    assert b'"network":"1"' in route.calls.last.request.content
+    assert _sent_json(route)["network"] == "1"
     await client.aclose()
 
 
@@ -391,6 +660,45 @@ async def test_write_network_unknown_fails_fast(client: KeeperHubClient):
             recipient_address="0xabc",
             amount="1",
         )
+    await client.aclose()
+
+
+@respx.mock
+async def test_blank_write_network_fails_fast(client: KeeperHubClient):
+    with pytest.raises(ValueError, match="network is required"):
+        await client.transfer(
+            network=" ",
+            recipient_address="0xabc",
+            amount="1",
+        )
+    await client.aclose()
+
+
+@respx.mock
+async def test_network_resolution_ignores_invalid_chain_entries(
+    client: KeeperHubClient,
+):
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    "not-a-dict",
+                    {"name": "missing-chain-id"},
+                    {"chainId": 1, "name": "ethereum", "id": "eth-main"},
+                ]
+            },
+        )
+    )
+    route = respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
+        return_value=Response(200, json={"executionId": "direct_48"})
+    )
+    await client.transfer(
+        network="ethereum",
+        recipient_address="0xabc",
+        amount="1",
+    )
+    assert route.call_count == 1
     await client.aclose()
 
 
@@ -425,6 +733,32 @@ async def test_testnet_only_allows_write_to_testnet():
         amount="1",
     )
     assert route.call_count == 1
+    await client.aclose()
+
+
+@respx.mock
+async def test_testnet_only_blocks_unknown_testnet_status():
+    client = KeeperHubClient(
+        api_key=TEST_API_KEY,
+        base_url=TEST_BASE_URL,
+        testnet_only=True,
+    )
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 1, "name": "ethereum", "id": "eth-main"}]},
+        )
+    )
+    route = respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
+        return_value=Response(200, json={"executionId": "should-not-be-called"})
+    )
+    with pytest.raises(ValueError, match="Cannot determine testnet status"):
+        await client.transfer(
+            network="ethereum",
+            recipient_address="0xabc",
+            amount="1",
+        )
+    assert route.call_count == 0
     await client.aclose()
 
 

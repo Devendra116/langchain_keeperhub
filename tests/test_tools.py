@@ -11,6 +11,7 @@ from langchain_keeperhub.client import KeeperHubClient
 from langchain_keeperhub.tools.check_and_execute import (
     ActionInput,
     CheckAndExecuteInput,
+    ConditionInput,
     CheckAndExecuteTool,
 )
 from langchain_keeperhub.tools.contract_call import (
@@ -30,6 +31,45 @@ from langchain_keeperhub.tools.transfer import TransferFundsInput, TransferFunds
 def _mock_client() -> KeeperHubClient:
     """Create a client with a fake key (methods will be patched)."""
     return KeeperHubClient(api_key="kh_test_mock", base_url="https://mock.local")
+
+
+def test_sync_run_methods_return_structured_output():
+    client = _mock_client()
+    client.list_chains = AsyncMock(return_value={"data": []})
+    client.fetch_abi = AsyncMock(return_value={"abi": []})
+    client.transfer = AsyncMock(return_value={"executionId": "transfer_1"})
+    client.contract_call = AsyncMock(return_value={"result": "42"})
+    client.check_and_execute = AsyncMock(return_value={"executed": False})
+    client.get_execution_status = AsyncMock(return_value={"status": "completed"})
+
+    assert ListChainsTool(client=client)._run(include_disabled=False) == {"data": []}
+    assert FetchContractABITool(client=client)._run(
+        chain_id="1",
+        address="0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+    ) == {"abi": []}
+    assert TransferFundsTool(client=client)._run(
+        network="ethereum",
+        recipient_address="0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+        amount="1",
+    ) == {"executionId": "transfer_1"}
+    assert ContractCallTool(client=client)._run(
+        contract_address="0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+        network="ethereum",
+        function_name="balanceOf",
+    ) == {"result": "42"}
+    assert CheckAndExecuteTool(client=client)._run(
+        contract_address="0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+        network="ethereum",
+        function_name="balanceOf",
+        condition={"operator": "gt", "value": "100"},
+        action={
+            "contract_address": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+            "function_name": "transfer",
+        },
+    ) == {"executed": False}
+    assert GetExecutionStatusTool(client=client)._run(
+        execution_id="direct_99"
+    ) == {"status": "completed"}
 
 
 # -- ListChainsTool -----------------------------------------------------------
@@ -177,6 +217,37 @@ async def test_check_and_execute_tool_serializes_action_to_api_shape():
             "functionArgs": '["0xabc", "500"]',
             "abi": '[{"type":"function","name":"swapExactTokensForTokens"}]',
             "gasLimitMultiplier": "1.5",
+        },
+    )
+
+
+async def test_check_and_execute_tool_accepts_condition_model():
+    client = _mock_client()
+    client.check_and_execute = AsyncMock(return_value={"executed": False})
+    tool = CheckAndExecuteTool(client=client)
+
+    result = await tool._arun(
+        contract_address="0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+        network="ethereum",
+        function_name="balanceOf",
+        condition=ConditionInput(operator="gt", value="100"),
+        action=ActionInput(
+            contract_address="0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+            function_name="transfer",
+        ),
+    )
+
+    assert result == {"executed": False}
+    client.check_and_execute.assert_awaited_once_with(
+        contract_address="0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+        network="ethereum",
+        function_name="balanceOf",
+        function_args=None,
+        abi=None,
+        condition={"operator": "gt", "value": "100"},
+        action={
+            "contractAddress": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+            "functionName": "transfer",
         },
     )
 

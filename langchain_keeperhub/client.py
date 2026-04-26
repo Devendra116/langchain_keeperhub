@@ -81,7 +81,7 @@ class KeeperHubClient:
         self._http: httpx.AsyncClient | None = None
         self._http_loop_id: int | None = None
         self._network_alias_to_chain_id: dict[str, str] | None = None
-        self._chain_id_is_testnet: dict[str, bool] | None = None
+        self._chain_id_is_testnet: dict[str, bool | None] | None = None
 
     # -- lifecycle ------------------------------------------------------------
 
@@ -136,7 +136,7 @@ class KeeperHubClient:
             chains = await self.list_chains(include_disabled=True)
             data = chains.get("data", [])
             alias_map: dict[str, str] = {}
-            testnet_map: dict[str, bool] = {}
+            testnet_map: dict[str, bool | None] = {}
             for item in data:
                 if not isinstance(item, dict):
                     continue
@@ -152,7 +152,10 @@ class KeeperHubClient:
                 aliases.discard("")
                 for alias in aliases:
                     alias_map.setdefault(alias, chain_id_str)
-                testnet_map[chain_id_str] = bool(item.get("isTestnet"))
+                is_testnet = item.get("isTestnet")
+                testnet_map[chain_id_str] = (
+                    bool(is_testnet) if is_testnet is not None else None
+                )
             self._network_alias_to_chain_id = alias_map
             self._chain_id_is_testnet = testnet_map
 
