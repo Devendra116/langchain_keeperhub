@@ -109,45 +109,54 @@ class KeeperHubClient:
         """Send a request, retrying transient failures (network errors, 429)."""
         http = self._get_http()
         last_exc: Exception | None = None
+        normalized_method = method.upper()
+        allow_retries = normalized_method == "GET"
+        max_attempts = _MAX_RETRIES if allow_retries else 1
 
         logger.debug(
             "%s %s payload=%s params=%s",
             method, path, _redact(json), params,
         )
 
-        for attempt in range(_MAX_RETRIES):
+        for attempt in range(max_attempts):
             try:
                 resp = await http.request(
                     method, path, json=json, params=params
                 )
             except httpx.HTTPError as exc:
                 last_exc = exc
-                wait = _RETRY_BACKOFF * (attempt + 1)
-                logger.warning(
-                    "%s %s network error (attempt %d/%d): %s — retrying in %.1fs",
-                    method, path, attempt + 1, _MAX_RETRIES, exc, wait,
-                )
-                await asyncio.sleep(wait)
-                continue
+                if attempt < max_attempts - 1:
+                    wait = _RETRY_BACKOFF * (attempt + 1)
+                    logger.warning(
+                        "%s %s network error (attempt %d/%d): %s — retrying in %.1fs",
+                        method, path, attempt + 1, max_attempts, exc, wait,
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+                break
 
             if resp.status_code == 429:
                 retry_after = float(
                     resp.headers.get("Retry-After", _RETRY_BACKOFF * (attempt + 1))
                 )
-                if attempt < _MAX_RETRIES - 1:
+                if allow_retries and attempt < max_attempts - 1:
                     logger.warning(
                         "%s %s rate limited (attempt %d/%d) — retrying in %.1fs",
-                        method, path, attempt + 1, _MAX_RETRIES, retry_after,
+                        method, path, attempt + 1, max_attempts, retry_after,
                     )
                     await asyncio.sleep(retry_after)
                     continue
                 body = resp.json() if resp.content else {}
                 logger.error(
-                    "%s %s gave up after %d 429s: %s",
-                    method, path, _MAX_RETRIES, body,
+                    "%s %s rate limited%s: %s",
+                    method,
+                    path,
+                    f" after {max_attempts} attempts" if allow_retries else "",
+                    body,
                 )
                 raise RateLimitError(
-                    "Rate limit exceeded after retries",
+                    "Rate limit exceeded"
+                    + (" after retries" if allow_retries else ""),
                     retry_after=retry_after,
                     status_code=429,
                     body=body,
@@ -166,11 +175,16 @@ class KeeperHubClient:
             return body  # type: ignore[return-value]
 
         logger.error(
-            "%s %s failed after %d network retries: %s",
-            method, path, _MAX_RETRIES, last_exc,
+            "%s %s failed after %d network attempt%s: %s",
+            method,
+            path,
+            max_attempts,
+            "s" if max_attempts > 1 else "",
+            last_exc,
         )
         raise KeeperHubError(
-            f"Request failed after {_MAX_RETRIES} retries: {last_exc}"
+            f"Request failed after {max_attempts} network attempt"
+            f"{'s' if max_attempts > 1 else ''}: {last_exc}"
         )
 
     # -- Direct Execution endpoints ------------------------------------------

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import pytest
 import respx
+import httpx
 from httpx import Response
 
 from langchain_keeperhub._exceptions import (
     AuthenticationError,
+    KeeperHubError,
     RateLimitError,
     ValidationError,
     WalletNotConfiguredError,
@@ -228,4 +230,30 @@ async def test_429_retries_then_raises(client: KeeperHubClient):
     )
     with pytest.raises(RateLimitError):
         await client.list_chains()
+    await client.aclose()
+
+
+@respx.mock
+async def test_get_network_error_retries_three_times(client: KeeperHubClient):
+    route = respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        side_effect=httpx.ReadTimeout("network timeout")
+    )
+    with pytest.raises(KeeperHubError, match="after 3 network attempts"):
+        await client.list_chains()
+    assert route.call_count == 3
+    await client.aclose()
+
+
+@respx.mock
+async def test_post_network_error_does_not_retry(client: KeeperHubClient):
+    route = respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
+        side_effect=httpx.ReadTimeout("network timeout")
+    )
+    with pytest.raises(KeeperHubError, match="after 1 network attempt"):
+        await client.transfer(
+            network="ethereum",
+            recipient_address="0x1",
+            amount="1",
+        )
+    assert route.call_count == 1
     await client.aclose()
