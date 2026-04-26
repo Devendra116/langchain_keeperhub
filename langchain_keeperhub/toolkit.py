@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
+
 from langchain_core.tools import BaseTool, BaseToolkit
 
 from langchain_keeperhub.client import KeeperHubClient
@@ -29,6 +31,9 @@ class KeeperHubToolkit(BaseToolkit):
             Falls back to ``KEEPERHUB_API_KEY`` env var.
         base_url: Override the KeeperHub API root
             (default ``https://app.keeperhub.com``).
+        testnet_only: When true, write tools reject chains not marked as
+            testnets by KeeperHub.
+        allowed_chain_ids: Optional allowlist of chain IDs for write tools.
     """
 
     def __init__(
@@ -36,8 +41,15 @@ class KeeperHubToolkit(BaseToolkit):
         api_key: str | None = None,
         *,
         base_url: str | None = None,
+        testnet_only: bool = False,
+        allowed_chain_ids: Collection[int | str] | None = None,
     ) -> None:
-        self._client = KeeperHubClient(api_key, base_url=base_url)
+        self._client = KeeperHubClient(
+            api_key,
+            base_url=base_url,
+            testnet_only=testnet_only,
+            allowed_chain_ids=allowed_chain_ids,
+        )
 
     @property
     def client(self) -> KeeperHubClient:

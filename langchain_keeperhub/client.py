@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from collections.abc import Collection
 from typing import Any
 
 import httpx
@@ -46,6 +47,10 @@ class KeeperHubClient:
             Falls back to the ``KEEPERHUB_API_KEY`` env var.
         base_url: API root. Defaults to ``https://app.keeperhub.com``.
         timeout: Per-request timeout in seconds.
+        testnet_only: When true, write endpoints reject chains not marked as
+            testnets by KeeperHub.
+        allowed_chain_ids: Optional allowlist of chain IDs for write endpoints.
+            When set, writes to all other chains are rejected.
     """
 
     def __init__(
@@ -54,6 +59,8 @@ class KeeperHubClient:
         *,
         base_url: str | None = None,
         timeout: float = _DEFAULT_TIMEOUT,
+        testnet_only: bool = False,
+        allowed_chain_ids: Collection[int | str] | None = None,
     ) -> None:
         resolved_key = api_key or os.environ.get("KEEPERHUB_API_KEY", "")
         if not resolved_key:
@@ -63,9 +70,18 @@ class KeeperHubClient:
         self._api_key = resolved_key
         self._base_url = (base_url or _DEFAULT_BASE_URL).rstrip("/")
         self._timeout = timeout
+        self._testnet_only = testnet_only
+        self._allowed_chain_ids = (
+            {str(chain_id).strip() for chain_id in allowed_chain_ids}
+            if allowed_chain_ids is not None
+            else None
+        )
+        if self._allowed_chain_ids is not None and "" in self._allowed_chain_ids:
+            raise ValueError("allowed_chain_ids cannot contain empty values.")
         self._http: httpx.AsyncClient | None = None
         self._http_loop_id: int | None = None
         self._network_alias_to_chain_id: dict[str, str] | None = None
+        self._chain_id_is_testnet: dict[str, bool] | None = None
 
     # -- lifecycle ------------------------------------------------------------
 
@@ -120,6 +136,7 @@ class KeeperHubClient:
             chains = await self.list_chains(include_disabled=True)
             data = chains.get("data", [])
             alias_map: dict[str, str] = {}
+            testnet_map: dict[str, bool] = {}
             for item in data:
                 if not isinstance(item, dict):
                     continue
@@ -135,7 +152,9 @@ class KeeperHubClient:
                 aliases.discard("")
                 for alias in aliases:
                     alias_map.setdefault(alias, chain_id_str)
+                testnet_map[chain_id_str] = bool(item.get("isTestnet"))
             self._network_alias_to_chain_id = alias_map
+            self._chain_id_is_testnet = testnet_map
 
         resolved = self._network_alias_to_chain_id.get(raw.lower())
         if resolved is not None:
@@ -148,6 +167,35 @@ class KeeperHubClient:
             f"Unsupported network '{network}'. "
             f"Use one of: {sample}{suffix}"
         )
+
+    async def _resolve_write_network(self, network: str) -> str:
+        """Resolve write target chain and enforce optional testnet-only mode."""
+        chain_id = await self._resolve_network(network)
+        if (
+            self._allowed_chain_ids is not None
+            and chain_id not in self._allowed_chain_ids
+        ):
+            allowed = ", ".join(sorted(self._allowed_chain_ids))
+            raise ValueError(
+                f"Unsupported write network '{network}' "
+                f"(resolved chain ID: {chain_id}). "
+                f"Allowed chain IDs: {allowed}"
+            )
+        if not self._testnet_only:
+            return chain_id
+
+        is_testnet = (self._chain_id_is_testnet or {}).get(chain_id)
+        if is_testnet is None:
+            raise ValueError(
+                f"Cannot determine testnet status for network '{network}' "
+                f"(resolved chain ID: {chain_id})."
+            )
+        if not is_testnet:
+            raise ValueError(
+                f"testnet_only is enabled; refusing write to non-testnet "
+                f"network '{network}' (chain ID: {chain_id})."
+            )
+        return chain_id
 
     # -- internal request plumbing -------------------------------------------
 
@@ -254,7 +302,7 @@ class KeeperHubClient:
     ) -> dict[str, Any]:
         """POST /api/execute/transfer — send native or ERC-20 tokens."""
         payload: dict[str, Any] = {
-            "network": await self._resolve_network(network),
+            "network": await self._resolve_write_network(network),
             "recipientAddress": recipient_address,
             "amount": amount,
         }
@@ -280,7 +328,7 @@ class KeeperHubClient:
         """POST /api/execute/contract-call — read or write a smart contract."""
         payload: dict[str, Any] = {
             "contractAddress": contract_address,
-            "network": await self._resolve_network(network),
+            "network": await self._resolve_write_network(network),
             "functionName": function_name,
         }
         if function_args is not None:
@@ -309,7 +357,7 @@ class KeeperHubClient:
         """POST /api/execute/check-and-execute — conditional execution."""
         payload: dict[str, Any] = {
             "contractAddress": contract_address,
-            "network": await self._resolve_network(network),
+            "network": await self._resolve_write_network(network),
             "functionName": function_name,
             "condition": condition,
             "action": action,

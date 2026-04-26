@@ -392,3 +392,148 @@ async def test_write_network_unknown_fails_fast(client: KeeperHubClient):
             amount="1",
         )
     await client.aclose()
+
+
+@respx.mock
+async def test_testnet_only_allows_write_to_testnet():
+    client = KeeperHubClient(
+        api_key=TEST_API_KEY,
+        base_url=TEST_BASE_URL,
+        testnet_only=True,
+    )
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "chainId": 11155111,
+                        "name": "sepolia",
+                        "id": "eth-sepolia",
+                        "isTestnet": True,
+                    }
+                ]
+            },
+        )
+    )
+    route = respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
+        return_value=Response(200, json={"executionId": "direct_45"})
+    )
+    await client.transfer(
+        network="sepolia",
+        recipient_address="0xabc",
+        amount="1",
+    )
+    assert route.call_count == 1
+    await client.aclose()
+
+
+@respx.mock
+async def test_testnet_only_blocks_write_to_mainnet():
+    client = KeeperHubClient(
+        api_key=TEST_API_KEY,
+        base_url=TEST_BASE_URL,
+        testnet_only=True,
+    )
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "chainId": 1,
+                        "name": "ethereum",
+                        "id": "eth-main",
+                        "isTestnet": False,
+                    }
+                ]
+            },
+        )
+    )
+    route = respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
+        return_value=Response(200, json={"executionId": "should-not-be-called"})
+    )
+    with pytest.raises(ValueError, match="testnet_only is enabled"):
+        await client.transfer(
+            network="ethereum",
+            recipient_address="0xabc",
+            amount="1",
+        )
+    assert route.call_count == 0
+    await client.aclose()
+
+
+@respx.mock
+async def test_allowed_chain_ids_allows_write_to_listed_chain():
+    client = KeeperHubClient(
+        api_key=TEST_API_KEY,
+        base_url=TEST_BASE_URL,
+        allowed_chain_ids={11155111},
+    )
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "chainId": 11155111,
+                        "name": "sepolia",
+                        "id": "eth-sepolia",
+                        "isTestnet": True,
+                    }
+                ]
+            },
+        )
+    )
+    route = respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
+        return_value=Response(200, json={"executionId": "direct_46"})
+    )
+    await client.transfer(
+        network="sepolia",
+        recipient_address="0xabc",
+        amount="1",
+    )
+    assert route.call_count == 1
+    await client.aclose()
+
+
+@respx.mock
+async def test_allowed_chain_ids_blocks_unlisted_write_network():
+    client = KeeperHubClient(
+        api_key=TEST_API_KEY,
+        base_url=TEST_BASE_URL,
+        testnet_only=True,
+        allowed_chain_ids={"84532"},
+    )
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "chainId": 11155111,
+                        "name": "sepolia",
+                        "id": "eth-sepolia",
+                        "isTestnet": True,
+                    },
+                    {
+                        "chainId": 84532,
+                        "name": "base-sepolia",
+                        "id": "base-sepolia",
+                        "isTestnet": True,
+                    },
+                ]
+            },
+        )
+    )
+    route = respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
+        return_value=Response(200, json={"executionId": "should-not-be-called"})
+    )
+    with pytest.raises(ValueError, match="Unsupported write network"):
+        await client.transfer(
+            network="sepolia",
+            recipient_address="0xabc",
+            amount="1",
+        )
+    assert route.call_count == 0
+    await client.aclose()
