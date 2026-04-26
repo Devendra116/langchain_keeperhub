@@ -7,6 +7,7 @@ See docs/keeperhub-api-notes.md for the locked field reference.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from typing import Any
 
@@ -22,6 +23,19 @@ _DEFAULT_BASE_URL = "https://app.keeperhub.com"
 _DEFAULT_TIMEOUT = 60.0
 _MAX_RETRIES = 3
 _RETRY_BACKOFF = 1.0  # seconds base
+
+logger = logging.getLogger(__name__)
+
+
+def _redact(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Shrink fields that bloat or leak info before logging."""
+    if not payload:
+        return payload
+    safe = dict(payload)
+    abi = safe.get("abi")
+    if isinstance(abi, str) and len(abi) > 64:
+        safe["abi"] = f"<abi {len(abi)} chars>"
+    return safe
 
 
 class KeeperHubClient:
@@ -92,9 +106,14 @@ class KeeperHubClient:
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Send a request with automatic retry on 429."""
+        """Send a request, retrying transient failures (network errors, 429)."""
         http = self._get_http()
         last_exc: Exception | None = None
+
+        logger.debug(
+            "%s %s payload=%s params=%s",
+            method, path, _redact(json), params,
+        )
 
         for attempt in range(_MAX_RETRIES):
             try:
@@ -103,7 +122,12 @@ class KeeperHubClient:
                 )
             except httpx.HTTPError as exc:
                 last_exc = exc
-                await asyncio.sleep(_RETRY_BACKOFF * (attempt + 1))
+                wait = _RETRY_BACKOFF * (attempt + 1)
+                logger.warning(
+                    "%s %s network error (attempt %d/%d): %s — retrying in %.1fs",
+                    method, path, attempt + 1, _MAX_RETRIES, exc, wait,
+                )
+                await asyncio.sleep(wait)
                 continue
 
             if resp.status_code == 429:
@@ -111,9 +135,17 @@ class KeeperHubClient:
                     resp.headers.get("Retry-After", _RETRY_BACKOFF * (attempt + 1))
                 )
                 if attempt < _MAX_RETRIES - 1:
+                    logger.warning(
+                        "%s %s rate limited (attempt %d/%d) — retrying in %.1fs",
+                        method, path, attempt + 1, _MAX_RETRIES, retry_after,
+                    )
                     await asyncio.sleep(retry_after)
                     continue
                 body = resp.json() if resp.content else {}
+                logger.error(
+                    "%s %s gave up after %d 429s: %s",
+                    method, path, _MAX_RETRIES, body,
+                )
                 raise RateLimitError(
                     "Rate limit exceeded after retries",
                     retry_after=retry_after,
@@ -122,9 +154,21 @@ class KeeperHubClient:
                 )
 
             body = resp.json() if resp.content else {}
+            if resp.status_code >= 400:
+                # Surface API-side failures so callers (and tool messages) see why.
+                logger.warning(
+                    "%s %s -> HTTP %d: %s",
+                    method, path, resp.status_code, body,
+                )
+            else:
+                logger.debug("%s %s -> HTTP %d", method, path, resp.status_code)
             raise_for_status(resp.status_code, body)
             return body  # type: ignore[return-value]
 
+        logger.error(
+            "%s %s failed after %d network retries: %s",
+            method, path, _MAX_RETRIES, last_exc,
+        )
         raise KeeperHubError(
             f"Request failed after {_MAX_RETRIES} retries: {last_exc}"
         )
