@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Coroutine, TypeVar
 
 T = TypeVar("T")
@@ -21,7 +22,8 @@ def run_sync(coro: Coroutine[Any, Any, T]) -> T:
     except RuntimeError:
         return asyncio.run(coro)
 
-    raise RuntimeError(
-        "run_sync() called from inside a running event loop; "
-        "use the tool's async _arun() coroutine instead."
-    )
+    # When called inside a running loop (Jupyter/FastAPI/Streamlit), execute
+    # the coroutine in a worker thread with its own event loop.
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(asyncio.run, coro)
+        return future.result()

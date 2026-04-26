@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 import respx
 import httpx
+from unittest.mock import Mock
 from httpx import Response
 
 from langchain_keeperhub._exceptions import (
@@ -257,3 +258,37 @@ async def test_post_network_error_does_not_retry(client: KeeperHubClient):
         )
     assert route.call_count == 1
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_http_closes_previous_client_on_loop_change(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    class DummyAsyncClient:
+        def __init__(self, *args, **kwargs):
+            self.is_closed = False
+
+        async def aclose(self):
+            self.is_closed = True
+
+    loop_a = object()
+    loop_b = object()
+    get_loop = Mock(side_effect=[loop_a, loop_b])
+
+    monkeypatch.setattr(
+        "langchain_keeperhub.client.httpx.AsyncClient", DummyAsyncClient
+    )
+    monkeypatch.setattr(
+        "langchain_keeperhub.client.asyncio.get_running_loop", get_loop
+    )
+
+    client = KeeperHubClient(
+        api_key=TEST_API_KEY,
+        base_url=TEST_BASE_URL,
+    )
+    first = await client._get_http()
+    second = await client._get_http()
+
+    assert first is not second
+    assert first.is_closed
+    assert not second.is_closed

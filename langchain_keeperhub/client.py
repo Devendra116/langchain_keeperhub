@@ -68,17 +68,24 @@ class KeeperHubClient:
 
     # -- lifecycle ------------------------------------------------------------
 
-    def _get_http(self) -> httpx.AsyncClient:
+    async def _get_http(self) -> httpx.AsyncClient:
         # httpx.AsyncClient binds its connection pool to the running loop on
         # first use. Sync tool calls go through asyncio.run() which spins up a
         # fresh loop each time, so we must re-create the client whenever the
         # active loop differs from the one the cached client was bound to.
+        old_http = self._http
         loop_id = id(asyncio.get_running_loop())
         if (
             self._http is None
             or self._http.is_closed
             or self._http_loop_id != loop_id
         ):
+            if (
+                old_http is not None
+                and not old_http.is_closed
+                and self._http_loop_id != loop_id
+            ):
+                await old_http.aclose()
             self._http = httpx.AsyncClient(
                 base_url=self._base_url,
                 timeout=self._timeout,
@@ -107,7 +114,7 @@ class KeeperHubClient:
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Send a request, retrying transient failures (network errors, 429)."""
-        http = self._get_http()
+        http = await self._get_http()
         last_exc: Exception | None = None
         normalized_method = method.upper()
         allow_retries = normalized_method == "GET"
