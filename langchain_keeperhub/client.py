@@ -103,6 +103,12 @@ class KeeperHubClient:
         if self._http and not self._http.is_closed:
             await self._http.aclose()
 
+    async def __aenter__(self) -> "KeeperHubClient":
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        await self.aclose()
+
     # -- internal request plumbing -------------------------------------------
 
     async def _request(

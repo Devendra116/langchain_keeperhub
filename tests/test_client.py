@@ -36,6 +36,22 @@ def test_env_var_fallback(monkeypatch: pytest.MonkeyPatch):
     assert c._api_key == "kh_from_env"
 
 
+@respx.mock
+async def test_client_async_context_manager_closes_http():
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(200, json={"data": []})
+    )
+    async with KeeperHubClient(
+        api_key=TEST_API_KEY,
+        base_url=TEST_BASE_URL,
+    ) as client:
+        await client.list_chains()
+        assert client._http is not None
+        assert not client._http.is_closed
+    assert client._http is not None
+    assert client._http.is_closed
+
+
 # -- list_chains --------------------------------------------------------------
 
 
