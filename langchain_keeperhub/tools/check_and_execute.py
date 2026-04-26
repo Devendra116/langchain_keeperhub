@@ -1,8 +1,6 @@
 """CheckAndExecuteTool — conditional read-then-write in one call."""
 
 from __future__ import annotations
-
-import json
 from typing import Any, Type
 
 from langchain_core.tools import BaseTool
@@ -83,7 +81,7 @@ class CheckAndExecuteTool(BaseTool):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    def _run(self, **kwargs: Any) -> str:
+    def _run(self, **kwargs: Any) -> dict[str, Any]:
         return run_sync(self._arun(**kwargs))
 
     @staticmethod
@@ -103,12 +101,12 @@ class CheckAndExecuteTool(BaseTool):
             payload["gasLimitMultiplier"] = action.gas_limit_multiplier
         return payload
 
-    async def _arun(self, **kwargs: Any) -> str:
+    async def _arun(self, **kwargs: Any) -> dict[str, Any]:
         condition = kwargs["condition"]
         if isinstance(condition, ConditionInput):
             condition = condition.model_dump()
 
-        result = await self.client.check_and_execute(
+        return await self.client.check_and_execute(
             contract_address=kwargs["contract_address"],
             network=kwargs["network"],
             function_name=kwargs["function_name"],
@@ -117,4 +115,3 @@ class CheckAndExecuteTool(BaseTool):
             condition=condition,
             action=self._serialize_action(kwargs["action"]),
         )
-        return json.dumps(result)

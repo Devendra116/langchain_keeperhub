@@ -1,8 +1,6 @@
 """FetchContractABITool — fetch verified ABI from block explorer."""
 
 from __future__ import annotations
-
-import json
 from typing import Any, Type
 
 from langchain_core.tools import BaseTool
@@ -43,12 +41,11 @@ class FetchContractABITool(BaseTool):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    def _run(self, **kwargs: Any) -> str:
+    def _run(self, **kwargs: Any) -> dict[str, Any]:
         return run_sync(self._arun(**kwargs))
 
-    async def _arun(self, **kwargs: Any) -> str:
-        result = await self.client.fetch_abi(
+    async def _arun(self, **kwargs: Any) -> dict[str, Any]:
+        return await self.client.fetch_abi(
             chain_id=kwargs["chain_id"],
             address=kwargs["address"],
         )
-        return json.dumps(result)

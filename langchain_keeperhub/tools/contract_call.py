@@ -1,8 +1,6 @@
 """ContractCallTool — read from or write to any smart contract."""
 
 from __future__ import annotations
-
-import json
 from typing import Any, Optional, Type
 
 from langchain_core.tools import BaseTool
@@ -69,11 +67,11 @@ class ContractCallTool(BaseTool):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    def _run(self, **kwargs: Any) -> str:
+    def _run(self, **kwargs: Any) -> dict[str, Any]:
         return run_sync(self._arun(**kwargs))
 
-    async def _arun(self, **kwargs: Any) -> str:
-        result = await self.client.contract_call(
+    async def _arun(self, **kwargs: Any) -> dict[str, Any]:
+        return await self.client.contract_call(
             contract_address=kwargs["contract_address"],
             network=kwargs["network"],
             function_name=kwargs["function_name"],
@@ -82,4 +80,3 @@ class ContractCallTool(BaseTool):
             value=kwargs.get("value"),
             gas_limit_multiplier=kwargs.get("gas_limit_multiplier"),
         )
-        return json.dumps(result)

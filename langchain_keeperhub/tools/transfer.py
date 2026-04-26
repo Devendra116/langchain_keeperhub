@@ -1,8 +1,6 @@
 """TransferFundsTool — send native or ERC-20 tokens via KeeperHub."""
 
 from __future__ import annotations
-
-import json
 from typing import Any, Optional, Type
 
 from langchain_core.tools import BaseTool
@@ -63,15 +61,14 @@ class TransferFundsTool(BaseTool):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    def _run(self, **kwargs: Any) -> str:
+    def _run(self, **kwargs: Any) -> dict[str, Any]:
         return run_sync(self._arun(**kwargs))
 
-    async def _arun(self, **kwargs: Any) -> str:
-        result = await self.client.transfer(
+    async def _arun(self, **kwargs: Any) -> dict[str, Any]:
+        return await self.client.transfer(
             network=kwargs["network"],
             recipient_address=kwargs["recipient_address"],
             amount=kwargs["amount"],
             token_address=kwargs.get("token_address"),
             gas_limit_multiplier=kwargs.get("gas_limit_multiplier"),
         )
-        return json.dumps(result)

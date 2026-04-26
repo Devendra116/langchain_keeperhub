@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from unittest.mock import AsyncMock
 
 import pytest
@@ -14,9 +13,15 @@ from langchain_keeperhub.tools.check_and_execute import (
     CheckAndExecuteInput,
     CheckAndExecuteTool,
 )
-from langchain_keeperhub.tools.contract_call import ContractCallInput
+from langchain_keeperhub.tools.contract_call import (
+    ContractCallInput,
+    ContractCallTool,
+)
 from langchain_keeperhub.tools.execution_status import GetExecutionStatusTool
-from langchain_keeperhub.tools.fetch_abi import FetchContractABIInput
+from langchain_keeperhub.tools.fetch_abi import (
+    FetchContractABIInput,
+    FetchContractABITool,
+)
 from langchain_keeperhub.tools.list_chains import ListChainsTool
 from langchain_keeperhub.tools.transfer import TransferFundsInput, TransferFundsTool
 
@@ -40,9 +45,8 @@ async def test_list_chains_tool():
         }
     )
     tool = ListChainsTool(client=client)
-    raw = await tool._arun(include_disabled=False)
-    parsed = json.loads(raw)
-    assert parsed["data"][0]["chainId"] == 1
+    result = await tool._arun(include_disabled=False)
+    assert result["data"][0]["chainId"] == 1
     client.list_chains.assert_awaited_once()
 
 
@@ -55,19 +59,67 @@ async def test_transfer_tool():
         return_value={"executionId": "direct_99", "status": "completed"}
     )
     tool = TransferFundsTool(client=client)
-    raw = await tool._arun(
+    result = await tool._arun(
         network="ethereum",
         recipient_address="0xabc",
         amount="1.0",
     )
-    parsed = json.loads(raw)
-    assert parsed["executionId"] == "direct_99"
+    assert result["executionId"] == "direct_99"
     client.transfer.assert_awaited_once_with(
         network="ethereum",
         recipient_address="0xabc",
         amount="1.0",
         token_address=None,
         gas_limit_multiplier=None,
+    )
+
+
+# -- ContractCallTool ----------------------------------------------------------
+
+
+async def test_contract_call_tool_returns_structured_output():
+    client = _mock_client()
+    client.contract_call = AsyncMock(return_value={"result": "42"})
+    tool = ContractCallTool(client=client)
+
+    result = await tool._arun(
+        contract_address="0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+        network="ethereum",
+        function_name="balanceOf",
+        function_args='["0xabc"]',
+    )
+
+    assert result == {"result": "42"}
+    client.contract_call.assert_awaited_once_with(
+        contract_address="0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+        network="ethereum",
+        function_name="balanceOf",
+        function_args='["0xabc"]',
+        abi=None,
+        value=None,
+        gas_limit_multiplier=None,
+    )
+
+
+# -- FetchContractABITool ------------------------------------------------------
+
+
+async def test_fetch_contract_abi_tool_returns_structured_output():
+    client = _mock_client()
+    client.fetch_abi = AsyncMock(
+        return_value={"abi": [{"type": "function", "name": "balanceOf"}]}
+    )
+    tool = FetchContractABITool(client=client)
+
+    result = await tool._arun(
+        chain_id="1",
+        address="0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+    )
+
+    assert result["abi"][0]["name"] == "balanceOf"
+    client.fetch_abi.assert_awaited_once_with(
+        chain_id="1",
+        address="0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
     )
 
 
@@ -84,10 +136,9 @@ async def test_execution_status_tool():
         }
     )
     tool = GetExecutionStatusTool(client=client)
-    raw = await tool._arun(execution_id="direct_99")
-    parsed = json.loads(raw)
-    assert parsed["status"] == "completed"
-    assert parsed["transactionHash"] == "0xdeadbeef"
+    result = await tool._arun(execution_id="direct_99")
+    assert result["status"] == "completed"
+    assert result["transactionHash"] == "0xdeadbeef"
 
 
 async def test_check_and_execute_tool_serializes_action_to_api_shape():
@@ -97,7 +148,7 @@ async def test_check_and_execute_tool_serializes_action_to_api_shape():
     )
     tool = CheckAndExecuteTool(client=client)
 
-    raw = await tool._arun(
+    result = await tool._arun(
         contract_address="0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
         network="ethereum",
         function_name="latestAnswer",
@@ -112,8 +163,7 @@ async def test_check_and_execute_tool_serializes_action_to_api_shape():
         },
     )
 
-    parsed = json.loads(raw)
-    assert parsed["executionId"] == "direct_100"
+    assert result["executionId"] == "direct_100"
     client.check_and_execute.assert_awaited_once_with(
         contract_address="0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
         network="ethereum",

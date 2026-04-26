@@ -1,8 +1,6 @@
 """ListChainsTool — discover supported blockchain networks."""
 
 from __future__ import annotations
-
-import json
 from typing import Any, Type
 
 from langchain_core.tools import BaseTool
@@ -41,11 +39,10 @@ class ListChainsTool(BaseTool):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    def _run(self, **kwargs: Any) -> str:
+    def _run(self, **kwargs: Any) -> dict[str, Any]:
         return run_sync(self._arun(**kwargs))
 
-    async def _arun(self, **kwargs: Any) -> str:
-        result = await self.client.list_chains(
+    async def _arun(self, **kwargs: Any) -> dict[str, Any]:
+        return await self.client.list_chains(
             include_disabled=kwargs.get("include_disabled", False)
         )
-        return json.dumps(result)
