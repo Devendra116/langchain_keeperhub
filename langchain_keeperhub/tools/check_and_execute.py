@@ -27,15 +27,13 @@ class ConditionInput(BaseModel):
 class ActionInput(BaseModel):
     """Write action to execute when the condition is met."""
 
-    contract_address: EvmAddress = Field(alias="contractAddress")
-    function_name: str = Field(alias="functionName")
-    function_args: str | None = Field(default=None, alias="functionArgs")
+    contract_address: EvmAddress
+    function_name: str
+    function_args: str | None = None
     abi: str | None = None
     gas_limit_multiplier: PositiveDecimalString | None = Field(
-        default=None, alias="gasLimitMultiplier"
+        default=None
     )
-
-    model_config = {"populate_by_name": True}
 
 
 class CheckAndExecuteInput(BaseModel):
@@ -88,14 +86,27 @@ class CheckAndExecuteTool(BaseTool):
     def _run(self, **kwargs: Any) -> str:
         return run_sync(self._arun(**kwargs))
 
+    @staticmethod
+    def _serialize_action(action: ActionInput | dict[str, Any]) -> dict[str, Any]:
+        if isinstance(action, dict):
+            action = ActionInput.model_validate(action)
+
+        payload: dict[str, Any] = {
+            "contractAddress": action.contract_address,
+            "functionName": action.function_name,
+        }
+        if action.function_args is not None:
+            payload["functionArgs"] = action.function_args
+        if action.abi is not None:
+            payload["abi"] = action.abi
+        if action.gas_limit_multiplier is not None:
+            payload["gasLimitMultiplier"] = action.gas_limit_multiplier
+        return payload
+
     async def _arun(self, **kwargs: Any) -> str:
         condition = kwargs["condition"]
         if isinstance(condition, ConditionInput):
             condition = condition.model_dump()
-
-        action = kwargs["action"]
-        if isinstance(action, ActionInput):
-            action = action.model_dump(by_alias=True, exclude_none=True)
 
         result = await self.client.check_and_execute(
             contract_address=kwargs["contract_address"],
@@ -104,6 +115,6 @@ class CheckAndExecuteTool(BaseTool):
             function_args=kwargs.get("function_args"),
             abi=kwargs.get("abi"),
             condition=condition,
-            action=action,
+            action=self._serialize_action(kwargs["action"]),
         )
         return json.dumps(result)
