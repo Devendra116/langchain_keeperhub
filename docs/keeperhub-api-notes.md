@@ -92,6 +92,29 @@ Response:
 
 ---
 
+## User
+
+### GET /api/user
+
+Response:
+```json
+{
+  "id": "user_123",
+  "name": "John Doe",
+  "email": "john@example.com",
+  "image": "https://...",
+  "isAnonymous": false,
+  "providerId": "google",
+  "walletAddress": "0x..."
+}
+```
+
+If `walletAddress` is missing or null, agents should warn the user to
+create/connect a KeeperHub wallet or explicitly provide the wallet address they
+want to use.
+
+---
+
 ## Chains
 
 ### GET /api/chains

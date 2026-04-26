@@ -14,6 +14,7 @@ from langchain_keeperhub.tools import (
     ContractCallTool,
     FetchContractABITool,
     GetExecutionStatusTool,
+    GetWalletAddressTool,
     ListChainsTool,
     TransferFundsTool,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "ContractCallTool",
     "FetchContractABITool",
     "GetExecutionStatusTool",
+    "GetWalletAddressTool",
     "ListChainsTool",
     "TransferFundsTool",
 ]

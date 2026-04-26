@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import ValidationError
 
+from langchain_keeperhub._exceptions import WalletNotConfiguredError
 from langchain_keeperhub.client import KeeperHubClient
 from langchain_keeperhub.tools.check_and_execute import (
     ActionInput,
@@ -23,6 +24,7 @@ from langchain_keeperhub.tools.fetch_abi import (
     FetchContractABIInput,
     FetchContractABITool,
 )
+from langchain_keeperhub.tools.get_wallet_address import GetWalletAddressTool
 from langchain_keeperhub.tools.list_chains import ListChainsTool
 from langchain_keeperhub.tools.transfer import TransferFundsInput, TransferFundsTool
 
@@ -41,6 +43,12 @@ def test_sync_run_methods_return_structured_output():
     client.contract_call = AsyncMock(return_value={"result": "42"})
     client.check_and_execute = AsyncMock(return_value={"executed": False})
     client.get_execution_status = AsyncMock(return_value={"status": "completed"})
+    client.get_user = AsyncMock(
+        return_value={
+            "id": "user_123",
+            "walletAddress": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+        }
+    )
 
     assert ListChainsTool(client=client)._run(include_disabled=False) == {"data": []}
     assert FetchContractABITool(client=client)._run(
@@ -70,6 +78,14 @@ def test_sync_run_methods_return_structured_output():
     assert GetExecutionStatusTool(client=client)._run(
         execution_id="direct_99"
     ) == {"status": "completed"}
+    assert GetWalletAddressTool(client=client)._run() == {
+        "wallet_connected": True,
+        "address": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+        "user": {
+            "id": "user_123",
+            "walletAddress": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+        },
+    }
 
 
 # -- ListChainsTool -----------------------------------------------------------
@@ -179,6 +195,76 @@ async def test_execution_status_tool():
     result = await tool._arun(execution_id="direct_99")
     assert result["status"] == "completed"
     assert result["transactionHash"] == "0xdeadbeef"
+
+
+async def test_get_wallet_address_tool_returns_connected_wallet():
+    client = _mock_client()
+    client.get_user = AsyncMock(
+        return_value={
+            "id": "user_123",
+            "name": "John Doe",
+            "email": "john@example.com",
+            "image": "https://example.com/avatar.png",
+            "isAnonymous": False,
+            "providerId": "google",
+            "walletAddress": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+        }
+    )
+    tool = GetWalletAddressTool(client=client)
+
+    result = await tool._arun()
+
+    assert result == {
+        "wallet_connected": True,
+        "address": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+        "user": {
+            "id": "user_123",
+            "name": "John Doe",
+            "email": "john@example.com",
+            "image": "https://example.com/avatar.png",
+            "isAnonymous": False,
+            "providerId": "google",
+            "walletAddress": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+        },
+    }
+    client.get_user.assert_awaited_once()
+
+
+async def test_get_wallet_address_tool_warns_when_wallet_not_connected():
+    client = _mock_client()
+    client.get_user = AsyncMock(
+        side_effect=WalletNotConfiguredError(
+            "Wallet not configured",
+            status_code=422,
+            body={"error": "Wallet not configured"},
+        )
+    )
+    tool = GetWalletAddressTool(client=client)
+
+    result = await tool._arun()
+
+    assert result["wallet_connected"] is False
+    assert "No wallet is connected" in result["warning"]
+    assert "explicitly pass" in result["warning"]
+    assert result["details"] == {"error": "Wallet not configured"}
+
+
+async def test_get_wallet_address_tool_warns_when_user_has_no_wallet_address():
+    client = _mock_client()
+    client.get_user = AsyncMock(
+        return_value={
+            "id": "user_123",
+            "email": "john@example.com",
+            "walletAddress": None,
+        }
+    )
+    tool = GetWalletAddressTool(client=client)
+
+    result = await tool._arun()
+
+    assert result["wallet_connected"] is False
+    assert "No wallet is connected" in result["warning"]
+    assert result["user"]["walletAddress"] is None
 
 
 async def test_check_and_execute_tool_serializes_action_to_api_shape():

@@ -11,6 +11,7 @@ from langchain_keeperhub.tools.check_and_execute import CheckAndExecuteTool
 from langchain_keeperhub.tools.contract_call import ContractCallTool
 from langchain_keeperhub.tools.execution_status import GetExecutionStatusTool
 from langchain_keeperhub.tools.fetch_abi import FetchContractABITool
+from langchain_keeperhub.tools.get_wallet_address import GetWalletAddressTool
 from langchain_keeperhub.tools.list_chains import ListChainsTool
 from langchain_keeperhub.tools.transfer import TransferFundsTool
 
@@ -72,6 +73,7 @@ class KeeperHubToolkit(BaseToolkit):
         return [
             ListChainsTool(client=c),
             FetchContractABITool(client=c),
+            GetWalletAddressTool(client=c),
             TransferFundsTool(client=c),
             ContractCallTool(client=c),
             CheckAndExecuteTool(client=c),

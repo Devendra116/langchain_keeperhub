@@ -381,6 +381,12 @@ class KeeperHubClient:
             "GET", f"/api/execute/{execution_id}/status"
         )
 
+    # -- User endpoints -------------------------------------------------------
+
+    async def get_user(self) -> dict[str, Any]:
+        """GET /api/user — fetch the authenticated KeeperHub user profile."""
+        return await self._request("GET", "/api/user")
+
     # -- Chains endpoints ----------------------------------------------------
 
     async def list_chains(

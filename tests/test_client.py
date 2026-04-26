@@ -397,6 +397,41 @@ async def test_get_execution_status(client: KeeperHubClient):
     await client.aclose()
 
 
+# -- get_user -----------------------------------------------------------------
+
+
+@respx.mock
+async def test_get_user(client: KeeperHubClient):
+    payload = {
+        "id": "user_123",
+        "name": "John Doe",
+        "email": "john@example.com",
+        "image": "https://example.com/avatar.png",
+        "isAnonymous": False,
+        "providerId": "google",
+        "walletAddress": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+    }
+    respx.get(f"{TEST_BASE_URL}/api/user").mock(
+        return_value=Response(200, json=payload)
+    )
+
+    result = await client.get_user()
+
+    assert result == payload
+    await client.aclose()
+
+
+@respx.mock
+async def test_get_user_raises_for_422(client: KeeperHubClient):
+    respx.get(f"{TEST_BASE_URL}/api/user").mock(
+        return_value=Response(422, json={"error": "Wallet not configured"})
+    )
+
+    with pytest.raises(WalletNotConfiguredError):
+        await client.get_user()
+    await client.aclose()
+
+
 # -- error handling -----------------------------------------------------------
 
 

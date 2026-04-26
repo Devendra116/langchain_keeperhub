@@ -19,7 +19,7 @@ def test_toolkit_exposes_shared_client_and_tools() -> None:
     tools = toolkit.get_tools()
 
     assert toolkit.client is toolkit._client
-    assert len(tools) == 6
+    assert len(tools) == 7
     assert all(tool.client is toolkit.client for tool in tools)
 
 
