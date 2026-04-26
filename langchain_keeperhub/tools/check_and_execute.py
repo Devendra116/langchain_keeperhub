@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Type
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -75,7 +75,7 @@ class CheckAndExecuteTool(_KeeperHubToolBase):
         "(eq/neq/gt/lt/gte/lte), and execute a write action only if the "
         "condition is met. Returns condition result and execution_id if triggered."
     )
-    args_schema: Type[BaseModel] = CheckAndExecuteInput
+    args_schema: type[BaseModel] = CheckAndExecuteInput
 
     @staticmethod
     def _serialize_action(action: ActionInput | dict[str, Any]) -> dict[str, Any]:

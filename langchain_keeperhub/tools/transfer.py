@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, Type
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -28,14 +28,14 @@ class TransferFundsInput(BaseModel):
             'or "10" for 10 USDC).'
         )
     )
-    token_address: Optional[EvmAddress] = Field(
+    token_address: EvmAddress | None = Field(
         default=None,
         description=(
             "ERC-20 token contract address. "
             "Omit for native token (ETH/MATIC/etc.) transfers."
         ),
     )
-    gas_limit_multiplier: Optional[PositiveDecimalString] = Field(
+    gas_limit_multiplier: PositiveDecimalString | None = Field(
         default=None,
         description='Gas limit multiplier as a positive decimal string (e.g. "1.5" for 50% buffer).',
     )
@@ -55,7 +55,7 @@ class TransferFundsTool(_KeeperHubToolBase):
         "recipient address on a supported blockchain network via KeeperHub. "
         "Returns an execution_id to poll with get_execution_status."
     )
-    args_schema: Type[BaseModel] = TransferFundsInput
+    args_schema: type[BaseModel] = TransferFundsInput
 
     async def _arun(self, **kwargs: Any) -> dict[str, Any]:
         return await self.client.transfer(

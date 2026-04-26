@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, Type
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -22,7 +22,7 @@ class ContractCallInput(BaseModel):
     function_name: str = Field(
         description='Name of the contract function to call (e.g. "balanceOf").'
     )
-    function_args: Optional[str] = Field(
+    function_args: str | None = Field(
         default=None,
         description=(
             "JSON array string of function arguments. "
@@ -30,18 +30,18 @@ class ContractCallInput(BaseModel):
             "Omit if function takes no parameters."
         ),
     )
-    abi: Optional[str] = Field(
+    abi: str | None = Field(
         default=None,
         description=(
             "Contract ABI as a JSON string. "
             "Auto-fetched from block explorer if omitted."
         ),
     )
-    value: Optional[str] = Field(
+    value: str | None = Field(
         default=None,
         description="ETH value in wei to send with a payable function call.",
     )
-    gas_limit_multiplier: Optional[PositiveDecimalString] = Field(
+    gas_limit_multiplier: PositiveDecimalString | None = Field(
         default=None,
         description='Gas limit multiplier as a positive decimal string (e.g. "1.2").',
     )
@@ -61,7 +61,7 @@ class ContractCallTool(_KeeperHubToolBase):
         "chain via KeeperHub. Read calls return the result directly. "
         "Write calls return an execution_id to poll with get_execution_status."
     )
-    args_schema: Type[BaseModel] = ContractCallInput
+    args_schema: type[BaseModel] = ContractCallInput
 
     async def _arun(self, **kwargs: Any) -> dict[str, Any]:
         return await self.client.contract_call(

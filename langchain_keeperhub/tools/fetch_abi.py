@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Type
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -35,7 +35,7 @@ class FetchContractABITool(_KeeperHubToolBase):
         "signatures, inputs, and outputs. Use this to discover callable "
         "functions before using contract_call."
     )
-    args_schema: Type[BaseModel] = FetchContractABIInput
+    args_schema: type[BaseModel] = FetchContractABIInput
 
     async def _arun(self, **kwargs: Any) -> dict[str, Any]:
         return await self.client.fetch_abi(

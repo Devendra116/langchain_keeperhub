@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Type
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -33,7 +33,7 @@ class ListChainsTool(_KeeperHubToolBase):
         "and whether each chain is a testnet. Call this before transfer or "
         "contract_call if you need to confirm a network name or chain ID."
     )
-    args_schema: Type[BaseModel] = ListChainsInput
+    args_schema: type[BaseModel] = ListChainsInput
 
     async def _arun(self, **kwargs: Any) -> dict[str, Any]:
         return await self.client.list_chains(

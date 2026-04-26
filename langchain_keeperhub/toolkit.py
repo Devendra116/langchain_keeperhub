@@ -56,6 +56,16 @@ class KeeperHubToolkit(BaseToolkit):
         """The shared HTTP client used by all tools."""
         return self._client
 
+    async def aclose(self) -> None:
+        """Close the shared KeeperHub client."""
+        await self._client.aclose()
+
+    async def __aenter__(self) -> "KeeperHubToolkit":
+        return self
+
+    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
+        await self.aclose()
+
     def get_tools(self) -> list[BaseTool]:
         """Return the list of LangChain tools backed by this toolkit's client."""
         c = self._client

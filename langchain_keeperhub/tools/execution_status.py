@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Type
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -34,7 +34,7 @@ class GetExecutionStatusTool(_KeeperHubToolBase):
         "gas used, block explorer link, and error details if failed. "
         "Use this after transfer or contract_call to confirm completion."
     )
-    args_schema: Type[BaseModel] = GetExecutionStatusInput
+    args_schema: type[BaseModel] = GetExecutionStatusInput
 
     async def _arun(self, **kwargs: Any) -> dict[str, Any]:
         return await self.client.get_execution_status(kwargs["execution_id"])
