@@ -88,6 +88,7 @@ See `examples/basic_agent.py` for a complete runnable script.
 | `keeperhub_contract_call` | `POST /api/execute/contract-call` | Read/write any smart contract |
 | `keeperhub_check_and_execute` | `POST /api/execute/check-and-execute` | Conditional read-then-write |
 | `keeperhub_get_execution_status` | `GET /api/execute/{id}/status` | Poll execution status and tx hash |
+| `keeperhub_list_executions` | local DB | Query past write executions (only available when `history=...` is enabled) |
 
 `keeperhub_get_wallet_address` reads the authenticated KeeperHub user profile and
 returns its `walletAddress`. If no wallet is connected, the tool returns a
@@ -127,6 +128,49 @@ structured output containing an `execution_id`. The agent should follow up with
 `get_execution_status` to poll until the transaction settles and surface the
 final tx hash to the user.
 
+## Execution history (opt-in)
+
+Off by default. Pass `history=True` (or any custom `ExecutionStore`) and every
+successful write — `transfer_funds`, `contract_call` writes, and
+`check_and_execute` runs that fired — is persisted locally. Status polls are
+folded back into the same row, so the DB always reflects the latest tx hash,
+gas used, and terminal state. Reads are never persisted.
+
+```python
+from langchain_keeperhub import KeeperHubToolkit
+
+# Default: SqliteExecutionStore at ~/.keeperhub/executions.db
+toolkit = KeeperHubToolkit(history=True)
+
+# Or point at a custom path / swap in your own ExecutionStore
+from langchain_keeperhub import SqliteExecutionStore
+toolkit = KeeperHubToolkit(history=SqliteExecutionStore("./executions.db"))
+```
+
+When history is enabled, the toolkit additionally exposes
+`keeperhub_list_executions`, which the agent can call to answer questions
+about past activity. Direct (non-LLM) callers can use the same store from
+Python:
+
+```python
+recent = await toolkit.history.list(status="pending", limit=10)
+for r in recent:
+    print(r.execution_id, r.kind, r.status, r.transaction_hash)
+```
+
+Why it's useful:
+
+- **Receipts / audit.** "Show me everything I sent today" becomes one tool call.
+- **Don't double-pay.** Agent checks history before issuing a similar transfer.
+- **Crash recovery.** A new session can resume polling rows that were left in `pending` / `running`.
+- **Long-running automation.** Treasury bots and streaming-payment loops get an audit trail without shipping their own DB layer.
+
+The store interface is a small Protocol (`record`, `update_status`, `list`,
+`get`, `aclose`); the SQLite default is stdlib-only and serializes blocking
+calls through `asyncio.to_thread`. Failures from the store are logged but
+never raised — history can never be the reason a successful transaction
+looks like a failure.
+
 ## Direct client usage (no LLM)
 
 ```python
@@ -151,11 +195,14 @@ LangChain Agent
         ├── FetchContractABITool ───┤
         ├── GetWalletAddressTool ───┤
         ├── TransferFundsTool ──────┤
-        ├── ContractCallTool ───────┼── KeeperHubClient (httpx)
-        ├── CheckAndExecuteTool ────┤       │
-        └── GetExecutionStatusTool ─┘       ▼
-                                     KeeperHub REST API
-                                     app.keeperhub.com
+        ├── ContractCallTool ───────┼── KeeperHubClient (httpx) ──► KeeperHub REST API
+        ├── CheckAndExecuteTool ────┤        │                       (app.keeperhub.com)
+        ├── GetExecutionStatusTool ─┤        │
+        └── ListExecutionsTool* ────┘        ▼
+                                       ExecutionStore
+                                       (SQLite default, optional)
+
+* ListExecutionsTool only registered when history=... is set.
 ```
 
 ## Development

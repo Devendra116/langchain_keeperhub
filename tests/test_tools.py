@@ -9,6 +9,11 @@ from pydantic import ValidationError
 
 from langchain_keeperhub._exceptions import WalletNotConfiguredError
 from langchain_keeperhub.client import KeeperHubClient
+from langchain_keeperhub.history import (
+    ExecutionKind,
+    ExecutionRecord,
+    SqliteExecutionStore,
+)
 from langchain_keeperhub.tools.check_and_execute import (
     ActionInput,
     CheckAndExecuteInput,
@@ -26,6 +31,10 @@ from langchain_keeperhub.tools.fetch_abi import (
 )
 from langchain_keeperhub.tools.get_wallet_address import GetWalletAddressTool
 from langchain_keeperhub.tools.list_chains import ListChainsTool
+from langchain_keeperhub.tools.list_executions import (
+    ListExecutionsInput,
+    ListExecutionsTool,
+)
 from langchain_keeperhub.tools.transfer import TransferFundsInput, TransferFundsTool
 
 
@@ -442,3 +451,99 @@ def test_check_and_execute_action_rejects_camel_case_input():
                 "functionName": "transfer",
             }
         )
+
+
+# -- ListExecutionsTool ------------------------------------------------------
+
+
+def _client_with_store(tmp_path) -> tuple[KeeperHubClient, SqliteExecutionStore]:
+    store = SqliteExecutionStore(tmp_path / "h.db")
+    client = KeeperHubClient(
+        api_key="kh_test_mock", base_url="https://mock.local", history=store
+    )
+    return client, store
+
+
+async def _seed(store: SqliteExecutionStore) -> None:
+    await store.record(
+        ExecutionRecord(
+            execution_id="ex_1",
+            kind=ExecutionKind.TRANSFER,
+            network="1",
+            status="completed",
+            transaction_hash="0xa",
+            created_at="2026-04-01T00:00:00+00:00",
+            updated_at="2026-04-01T00:00:00+00:00",
+        )
+    )
+    await store.record(
+        ExecutionRecord(
+            execution_id="ex_2",
+            kind=ExecutionKind.CONTRACT_CALL,
+            network="8453",
+            status="pending",
+            created_at="2026-04-15T00:00:00+00:00",
+            updated_at="2026-04-15T00:00:00+00:00",
+        )
+    )
+
+
+async def test_list_executions_tool_returns_to_dict_payload(tmp_path):
+    client, store = _client_with_store(tmp_path)
+    await _seed(store)
+    try:
+        tool = ListExecutionsTool(client=client)
+        result = await tool._arun()
+        assert "executions" in result
+        ids = [e["execution_id"] for e in result["executions"]]
+        # newest first
+        assert ids == ["ex_2", "ex_1"]
+        assert result["executions"][0]["kind"] == "contract_call"
+    finally:
+        store._close_sync()
+
+
+async def test_list_executions_tool_filters_by_status_and_kind(tmp_path):
+    client, store = _client_with_store(tmp_path)
+    await _seed(store)
+    try:
+        tool = ListExecutionsTool(client=client)
+        result = await tool._arun(status="completed", kind="transfer")
+        ids = [e["execution_id"] for e in result["executions"]]
+        assert ids == ["ex_1"]
+    finally:
+        store._close_sync()
+
+
+async def test_list_executions_tool_filters_by_since_and_network(tmp_path):
+    client, store = _client_with_store(tmp_path)
+    await _seed(store)
+    try:
+        tool = ListExecutionsTool(client=client)
+        result = await tool._arun(
+            since="2026-04-10T00:00:00+00:00", network="8453"
+        )
+        ids = [e["execution_id"] for e in result["executions"]]
+        assert ids == ["ex_2"]
+    finally:
+        store._close_sync()
+
+
+async def test_list_executions_tool_warns_when_history_disabled():
+    client = KeeperHubClient(api_key="kh_test_mock", base_url="https://mock.local")
+    tool = ListExecutionsTool(client=client)
+    result = await tool._arun()
+    assert result["executions"] == []
+    assert "Execution history is disabled" in result["warning"]
+
+
+def test_list_executions_input_rejects_unknown_status():
+    with pytest.raises(ValidationError):
+        ListExecutionsInput.model_validate({"status": "weird"})
+
+
+def test_list_executions_input_rejects_out_of_range_limit():
+    with pytest.raises(ValidationError):
+        ListExecutionsInput.model_validate({"limit": 0})
+    with pytest.raises(ValidationError):
+        ListExecutionsInput.model_validate({"limit": 1000})

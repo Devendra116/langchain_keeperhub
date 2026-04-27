@@ -19,6 +19,13 @@ from langchain_keeperhub._exceptions import (
     RateLimitError,
     raise_for_status,
 )
+from langchain_keeperhub.history._models import (
+    ExecutionKind,
+    ExecutionRecord,
+    normalize_status,
+    utc_now_iso,
+)
+from langchain_keeperhub.history._store import ExecutionStore
 
 _DEFAULT_BASE_URL = "https://app.keeperhub.com"
 _DEFAULT_TIMEOUT = 60.0
@@ -62,6 +69,11 @@ class KeeperHubClient:
             testnets by KeeperHub.
         allowed_chain_ids: Optional allowlist of chain IDs for write endpoints.
             When set, writes to all other chains are rejected.
+        history: Optional :class:`ExecutionStore` to persist write executions.
+            Pass ``True`` to use the default :class:`SqliteExecutionStore` at
+            ``~/.keeperhub/executions.db``. Defaults to ``None`` (no
+            persistence). Status polls also flow into the store as
+            ``update_status`` calls when a row exists for the execution id.
     """
 
     def __init__(
@@ -72,6 +84,7 @@ class KeeperHubClient:
         timeout: float = _DEFAULT_TIMEOUT,
         testnet_only: bool = False,
         allowed_chain_ids: Collection[int | str] | None = None,
+        history: ExecutionStore | bool | None = None,
     ) -> None:
         resolved_key = api_key or os.environ.get("KEEPERHUB_API_KEY", "")
         if not resolved_key:
@@ -93,6 +106,25 @@ class KeeperHubClient:
         self._http_loop_id: int | None = None
         self._network_alias_to_chain_id: dict[str, str] | None = None
         self._chain_id_is_testnet: dict[str, bool | None] | None = None
+        self._history: ExecutionStore | None = self._resolve_history(history)
+
+    @staticmethod
+    def _resolve_history(
+        history: ExecutionStore | bool | None,
+    ) -> ExecutionStore | None:
+        if history is None or history is False:
+            return None
+        if history is True:
+            # Lazy import so the SDK never touches sqlite3 unless asked.
+            from langchain_keeperhub.history.sqlite import SqliteExecutionStore
+
+            return SqliteExecutionStore()
+        return history
+
+    @property
+    def history(self) -> ExecutionStore | None:
+        """Optional execution-history store; ``None`` when persistence is off."""
+        return self._history
 
     # -- lifecycle ------------------------------------------------------------
 
@@ -136,6 +168,11 @@ class KeeperHubClient:
     async def aclose(self) -> None:
         if self._http and not self._http.is_closed:
             await self._http.aclose()
+        if self._history is not None:
+            try:
+                await self._history.aclose()
+            except Exception as exc:  # noqa: BLE001 - best-effort cleanup
+                logger.warning("history.aclose failed: %s", exc)
 
     async def __aenter__(self) -> "KeeperHubClient":
         return self
@@ -308,6 +345,72 @@ class KeeperHubClient:
             f"{'s' if max_attempts > 1 else ''}: {last_exc}"
         )
 
+    # -- history plumbing ----------------------------------------------------
+
+    async def _persist_write(
+        self,
+        *,
+        kind: ExecutionKind,
+        chain_id: str,
+        request: dict[str, Any],
+        response: dict[str, Any],
+    ) -> None:
+        """Record a write execution if (and only if) we have a store + execId.
+
+        Failures of the store are intentionally swallowed: history must never
+        be the reason a successful transaction looks like a failure.
+        """
+        if self._history is None:
+            return
+        execution_id = response.get("executionId") if isinstance(response, dict) else None
+        if not execution_id:
+            return
+        now = utc_now_iso()
+        record = ExecutionRecord(
+            execution_id=str(execution_id),
+            kind=kind,
+            network=str(chain_id),
+            status=normalize_status(
+                response.get("status") if isinstance(response, dict) else None
+            ),
+            request=_redact(request) or {},
+            response=dict(response),
+            transaction_hash=response.get("transactionHash"),
+            transaction_link=response.get("transactionLink"),
+            gas_used_wei=response.get("gasUsedWei"),
+            error=response.get("error"),
+            created_at=now,
+            updated_at=now,
+        )
+        try:
+            await self._history.record(record)
+        except Exception as exc:  # noqa: BLE001 - best-effort persistence
+            logger.warning(
+                "history.record failed for execution %s: %s",
+                execution_id, exc,
+            )
+
+    async def _persist_status_update(
+        self, execution_id: str, response: dict[str, Any]
+    ) -> None:
+        """Refresh the matching history row from a status-poll response."""
+        if self._history is None or not execution_id:
+            return
+        try:
+            await self._history.update_status(
+                execution_id,
+                status=normalize_status(response.get("status")),
+                transaction_hash=response.get("transactionHash"),
+                transaction_link=response.get("transactionLink"),
+                gas_used_wei=response.get("gasUsedWei"),
+                error=response.get("error"),
+            )
+        except Exception as exc:  # noqa: BLE001 - best-effort persistence
+            logger.warning(
+                "history.update_status failed for execution %s: %s",
+                execution_id, exc,
+            )
+
     # -- Direct Execution endpoints ------------------------------------------
 
     async def transfer(
@@ -321,8 +424,9 @@ class KeeperHubClient:
         gas_limit_multiplier: str | None = None,
     ) -> dict[str, Any]:
         """POST /api/execute/transfer — send native or ERC-20 tokens."""
+        chain_id = await self._resolve_write_network(network)
         payload: dict[str, Any] = {
-            "network": await self._resolve_write_network(network),
+            "network": chain_id,
             "recipientAddress": recipient_address,
             "amount": amount,
         }
@@ -332,7 +436,16 @@ class KeeperHubClient:
             payload["tokenConfig"] = token_config
         if gas_limit_multiplier is not None:
             payload["gasLimitMultiplier"] = gas_limit_multiplier
-        return await self._request("POST", "/api/execute/transfer", json=payload)
+        response = await self._request(
+            "POST", "/api/execute/transfer", json=payload
+        )
+        await self._persist_write(
+            kind=ExecutionKind.TRANSFER,
+            chain_id=chain_id,
+            request=payload,
+            response=response,
+        )
+        return response
 
     async def contract_call(
         self,
@@ -346,9 +459,10 @@ class KeeperHubClient:
         gas_limit_multiplier: str | None = None,
     ) -> dict[str, Any]:
         """POST /api/execute/contract-call — read or write a smart contract."""
+        chain_id = await self._resolve_write_network(network)
         payload: dict[str, Any] = {
             "contractAddress": contract_address,
-            "network": await self._resolve_write_network(network),
+            "network": chain_id,
             "functionName": function_name,
         }
         if function_args is not None:
@@ -359,9 +473,18 @@ class KeeperHubClient:
             payload["value"] = value
         if gas_limit_multiplier is not None:
             payload["gasLimitMultiplier"] = gas_limit_multiplier
-        return await self._request(
+        response = await self._request(
             "POST", "/api/execute/contract-call", json=payload
         )
+        # Reads return {"result": ...}; only writes carry an executionId. We
+        # rely on _persist_write to no-op when executionId is missing.
+        await self._persist_write(
+            kind=ExecutionKind.CONTRACT_CALL,
+            chain_id=chain_id,
+            request=payload,
+            response=response,
+        )
+        return response
 
     async def check_and_execute(
         self,
@@ -375,9 +498,10 @@ class KeeperHubClient:
         action: dict[str, Any],
     ) -> dict[str, Any]:
         """POST /api/execute/check-and-execute — conditional execution."""
+        chain_id = await self._resolve_write_network(network)
         payload: dict[str, Any] = {
             "contractAddress": contract_address,
-            "network": await self._resolve_write_network(network),
+            "network": chain_id,
             "functionName": function_name,
             "condition": condition,
             "action": action,
@@ -386,17 +510,29 @@ class KeeperHubClient:
             payload["functionArgs"] = function_args
         if abi is not None:
             payload["abi"] = abi
-        return await self._request(
+        response = await self._request(
             "POST", "/api/execute/check-and-execute", json=payload
         )
+        # Records only when the action actually fired (executed=true and the
+        # response carries an executionId); _persist_write enforces the latter.
+        if isinstance(response, dict) and response.get("executed") is True:
+            await self._persist_write(
+                kind=ExecutionKind.CHECK_AND_EXECUTE,
+                chain_id=chain_id,
+                request=payload,
+                response=response,
+            )
+        return response
 
     async def get_execution_status(
         self, execution_id: str
     ) -> dict[str, Any]:
         """GET /api/execute/{executionId}/status"""
-        return await self._request(
+        response = await self._request(
             "GET", f"/api/execute/{execution_id}/status"
         )
+        await self._persist_status_update(execution_id, response)
+        return response
 
     # -- User endpoints -------------------------------------------------------
 

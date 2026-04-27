@@ -23,6 +23,7 @@ from langchain_keeperhub._exceptions import (
 )
 from langchain_keeperhub._types import _validate_positive_decimal_string
 from langchain_keeperhub.client import KeeperHubClient, _chains_payload_to_rows, _redact
+from langchain_keeperhub.history import ExecutionKind, SqliteExecutionStore
 
 from .conftest import TEST_API_KEY, TEST_BASE_URL
 
@@ -954,3 +955,300 @@ async def test_allowed_chain_ids_blocks_unlisted_write_network():
         )
     assert route.call_count == 0
     await client.aclose()
+
+
+# -- history integration -----------------------------------------------------
+
+
+def test_history_property_is_none_by_default(client: KeeperHubClient):
+    assert client.history is None
+
+
+def test_history_true_creates_default_sqlite_store(tmp_path, monkeypatch):
+    # Redirect ~ so SqliteExecutionStore() lands in tmp_path/.keeperhub/.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    from importlib import reload
+
+    import langchain_keeperhub.history.sqlite as sqlite_mod
+
+    reload(sqlite_mod)
+    monkeypatch.setattr(
+        "langchain_keeperhub.client.ExecutionStore",
+        sqlite_mod.SqliteExecutionStore,
+        raising=False,
+    )
+
+    c = KeeperHubClient(api_key=TEST_API_KEY, history=True)
+    try:
+        assert isinstance(c.history, sqlite_mod.SqliteExecutionStore)
+    finally:
+        # Drop the sqlite connection synchronously to avoid event-loop juggling.
+        c.history._close_sync()  # type: ignore[union-attr]
+
+
+@respx.mock
+async def test_transfer_persists_execution_to_history(tmp_path):
+    store = SqliteExecutionStore(tmp_path / "h.db")
+    c = KeeperHubClient(
+        api_key=TEST_API_KEY, base_url=TEST_BASE_URL, history=store
+    )
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 1, "name": "ethereum", "id": "ethereum"}]},
+        )
+    )
+    respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
+        return_value=Response(
+            200, json={"executionId": "direct_50", "status": "completed"}
+        )
+    )
+
+    await c.transfer(
+        network="ethereum", recipient_address="0xabc", amount="0.1"
+    )
+    rows = await store.list()
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.execution_id == "direct_50"
+    assert row.kind == ExecutionKind.TRANSFER
+    assert row.network == "1"
+    assert row.status == "completed"
+    assert row.request["recipientAddress"] == "0xabc"
+    await c.aclose()
+
+
+@respx.mock
+async def test_contract_call_read_does_not_persist(tmp_path):
+    store = SqliteExecutionStore(tmp_path / "h.db")
+    c = KeeperHubClient(
+        api_key=TEST_API_KEY, base_url=TEST_BASE_URL, history=store
+    )
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 1, "name": "ethereum", "id": "ethereum"}]},
+        )
+    )
+    respx.post(f"{TEST_BASE_URL}/api/execute/contract-call").mock(
+        return_value=Response(200, json={"result": "42"})
+    )
+
+    await c.contract_call(
+        contract_address="0xDAI",
+        network="ethereum",
+        function_name="balanceOf",
+    )
+
+    assert await store.list() == []
+    await c.aclose()
+
+
+@respx.mock
+async def test_contract_call_write_persists(tmp_path):
+    store = SqliteExecutionStore(tmp_path / "h.db")
+    c = KeeperHubClient(
+        api_key=TEST_API_KEY, base_url=TEST_BASE_URL, history=store
+    )
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 1, "name": "ethereum", "id": "ethereum"}]},
+        )
+    )
+    respx.post(f"{TEST_BASE_URL}/api/execute/contract-call").mock(
+        return_value=Response(200, json={"executionId": "direct_51"})
+    )
+
+    await c.contract_call(
+        contract_address="0xDAI",
+        network="ethereum",
+        function_name="approve",
+    )
+    rows = await store.list()
+    assert [r.execution_id for r in rows] == ["direct_51"]
+    assert rows[0].kind == ExecutionKind.CONTRACT_CALL
+    await c.aclose()
+
+
+@respx.mock
+async def test_check_and_execute_persists_only_when_executed(tmp_path):
+    store = SqliteExecutionStore(tmp_path / "h.db")
+    c = KeeperHubClient(
+        api_key=TEST_API_KEY, base_url=TEST_BASE_URL, history=store
+    )
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 1, "name": "ethereum", "id": "ethereum"}]},
+        )
+    )
+    route = respx.post(f"{TEST_BASE_URL}/api/execute/check-and-execute").mock(
+        side_effect=[
+            Response(
+                200,
+                json={
+                    "executed": False,
+                    "condition": {"met": False, "operator": "gt"},
+                },
+            ),
+            Response(
+                200,
+                json={
+                    "executed": True,
+                    "executionId": "direct_60",
+                    "status": "completed",
+                },
+            ),
+        ]
+    )
+
+    await c.check_and_execute(
+        contract_address="0xDAI",
+        network="ethereum",
+        function_name="balanceOf",
+        condition={"operator": "gt", "value": "1000"},
+        action={"contractAddress": "0xDAI", "functionName": "transfer"},
+    )
+    assert await store.list() == []  # not executed -> nothing recorded
+
+    await c.check_and_execute(
+        contract_address="0xDAI",
+        network="ethereum",
+        function_name="balanceOf",
+        condition={"operator": "gt", "value": "1000"},
+        action={"contractAddress": "0xDAI", "functionName": "transfer"},
+    )
+    rows = await store.list()
+    assert [r.execution_id for r in rows] == ["direct_60"]
+    assert rows[0].kind == ExecutionKind.CHECK_AND_EXECUTE
+    assert route.call_count == 2
+    await c.aclose()
+
+
+@respx.mock
+async def test_get_execution_status_updates_existing_history_row(tmp_path):
+    store = SqliteExecutionStore(tmp_path / "h.db")
+    c = KeeperHubClient(
+        api_key=TEST_API_KEY, base_url=TEST_BASE_URL, history=store
+    )
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 1, "name": "ethereum", "id": "ethereum"}]},
+        )
+    )
+    respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
+        return_value=Response(
+            200, json={"executionId": "direct_70", "status": "pending"}
+        )
+    )
+    respx.get(f"{TEST_BASE_URL}/api/execute/direct_70/status").mock(
+        return_value=Response(
+            200,
+            json={
+                "executionId": "direct_70",
+                "status": "completed",
+                "transactionHash": "0xfeed",
+                "transactionLink": "https://etherscan.io/tx/0xfeed",
+                "gasUsedWei": "21000",
+            },
+        )
+    )
+
+    await c.transfer(network="ethereum", recipient_address="0xabc", amount="1")
+    pre = await store.get("direct_70")
+    assert pre is not None and pre.status == "pending"
+
+    await c.get_execution_status("direct_70")
+    post = await store.get("direct_70")
+    assert post is not None
+    assert post.status == "completed"
+    assert post.transaction_hash == "0xfeed"
+    assert post.gas_used_wei == "21000"
+    assert post.transaction_link == "https://etherscan.io/tx/0xfeed"
+    await c.aclose()
+
+
+@respx.mock
+async def test_get_execution_status_for_unknown_id_does_not_create_row(tmp_path):
+    store = SqliteExecutionStore(tmp_path / "h.db")
+    c = KeeperHubClient(
+        api_key=TEST_API_KEY, base_url=TEST_BASE_URL, history=store
+    )
+    respx.get(f"{TEST_BASE_URL}/api/execute/never_seen/status").mock(
+        return_value=Response(200, json={"status": "completed"})
+    )
+    await c.get_execution_status("never_seen")
+    assert await store.list() == []
+    await c.aclose()
+
+
+@respx.mock
+async def test_history_record_failure_is_logged_not_raised(tmp_path, caplog):
+    """Store failures must never break a successful transaction."""
+
+    class BoomStore:
+        async def record(self, record):  # noqa: ARG002
+            raise RuntimeError("disk full")
+
+        async def update_status(self, *args, **kwargs):  # noqa: ARG002
+            return None
+
+        async def list(self, **kwargs):  # noqa: ARG002
+            return []
+
+        async def get(self, execution_id):  # noqa: ARG002
+            return None
+
+        async def aclose(self):
+            return None
+
+    c = KeeperHubClient(
+        api_key=TEST_API_KEY, base_url=TEST_BASE_URL, history=BoomStore()
+    )
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json={"data": [{"chainId": 1, "name": "ethereum", "id": "ethereum"}]},
+        )
+    )
+    respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
+        return_value=Response(
+            200, json={"executionId": "direct_80", "status": "completed"}
+        )
+    )
+
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="langchain_keeperhub.client"):
+        result = await c.transfer(
+            network="ethereum", recipient_address="0xabc", amount="1"
+        )
+
+    assert result["executionId"] == "direct_80"
+    assert any(
+        "history.record failed for execution direct_80" in r.message
+        for r in caplog.records
+    )
+    await c.aclose()
+
+
+@respx.mock
+async def test_aclose_closes_history_store(tmp_path):
+    store = SqliteExecutionStore(tmp_path / "h.db")
+    c = KeeperHubClient(
+        api_key=TEST_API_KEY, base_url=TEST_BASE_URL, history=store
+    )
+    await c.aclose()
+    # SqliteExecutionStore.aclose flips _closed True and rejects further writes.
+    with pytest.raises(RuntimeError, match="closed"):
+        await store.record(
+            __import__("langchain_keeperhub.history", fromlist=["ExecutionRecord"]).ExecutionRecord(
+                execution_id="x",
+                kind=ExecutionKind.TRANSFER,
+                network="1",
+                status="pending",
+            )
+        )

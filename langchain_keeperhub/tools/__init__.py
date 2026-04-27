@@ -6,6 +6,7 @@ from langchain_keeperhub.tools.execution_status import GetExecutionStatusTool
 from langchain_keeperhub.tools.fetch_abi import FetchContractABITool
 from langchain_keeperhub.tools.get_wallet_address import GetWalletAddressTool
 from langchain_keeperhub.tools.list_chains import ListChainsTool
+from langchain_keeperhub.tools.list_executions import ListExecutionsTool
 from langchain_keeperhub.tools.transfer import TransferFundsTool
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     "GetExecutionStatusTool",
     "GetWalletAddressTool",
     "ListChainsTool",
+    "ListExecutionsTool",
     "TransferFundsTool",
 ]

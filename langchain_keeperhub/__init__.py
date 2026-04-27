@@ -8,6 +8,12 @@ import logging as _logging
 _logging.getLogger(__name__).addHandler(_logging.NullHandler())
 
 from langchain_keeperhub.client import KeeperHubClient
+from langchain_keeperhub.history import (
+    ExecutionKind,
+    ExecutionRecord,
+    ExecutionStore,
+    SqliteExecutionStore,
+)
 from langchain_keeperhub.toolkit import KeeperHubToolkit
 from langchain_keeperhub.tools import (
     CheckAndExecuteTool,
@@ -16,6 +22,7 @@ from langchain_keeperhub.tools import (
     GetExecutionStatusTool,
     GetWalletAddressTool,
     ListChainsTool,
+    ListExecutionsTool,
     TransferFundsTool,
 )
 
@@ -28,5 +35,10 @@ __all__ = [
     "GetExecutionStatusTool",
     "GetWalletAddressTool",
     "ListChainsTool",
+    "ListExecutionsTool",
     "TransferFundsTool",
+    "ExecutionKind",
+    "ExecutionRecord",
+    "ExecutionStore",
+    "SqliteExecutionStore",
 ]
