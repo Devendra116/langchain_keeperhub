@@ -186,21 +186,132 @@ async def main():
 asyncio.run(main())
 ```
 
+## Workflow management (opt-in)
+
+KeeperHub also runs an officially maintained **MCP server** (~20 tools)
+covering the *cold path* — workflow CRUD, AI workflow generation,
+plugin/template catalogs, integrations, action-schema introspection,
+and workflow-run polling. The toolkit can bridge that surface into
+LangChain too: same toolkit, same API key, opt-in via a flag.
+
+```bash
+pip install "langchain-keeperhub[workflows]"
+```
+
+```python
+import asyncio
+from langchain_keeperhub import KeeperHubToolkit
+
+async def main():
+    toolkit = KeeperHubToolkit(
+        workflows=True,
+        # Server-side names — the toolkit applies the keeperhub_ prefix
+        # (and any rename) before the agent sees them.
+        mcp_include={
+            "ai_generate_workflow",
+            "create_workflow",
+            "execute_workflow",
+            "get_execution_status",
+            "list_workflows",
+        },
+    )
+    try:
+        tools = await toolkit.aget_tools()  # async — MCP loads asynchronously
+        # ... pass *tools* to create_react_agent / LangGraph
+    finally:
+        await toolkit.aclose()
+
+asyncio.run(main())
+```
+
+See `examples/workflow_agent.py` for an end-to-end demo: an agent
+generates a workflow from natural language, persists it, executes it,
+polls the run, and prints the resulting tx hash.
+
+### Hot path vs cold path — when to use which
+
+| You want to… | Path | Tool flavor |
+|---|---|---|
+| Send a transfer or contract call **right now** | Hot | Native: `keeperhub_transfer_funds`, `keeperhub_contract_call` |
+| Read on-chain data, fetch ABIs, list chains | Hot | Native: `keeperhub_*` REST tools |
+| Compose / persist / run a recurring workflow | Cold | MCP: `keeperhub_create_workflow`, `keeperhub_execute_workflow` |
+| Have AI draft a workflow graph from a prompt | Cold | MCP: `keeperhub_ai_generate_workflow` |
+| Browse plugin / template / integration catalog | Cold | MCP catalog tools |
+
+Reach for the **native** tools when the agent's job is to act on chain
+in this turn — they are synchronous, REST-thin, and ship the testnet
+guardrails and history persistence described above. Reach for the
+**MCP-bridged** tools only when the user is composing or operating
+KeeperHub-managed workflow graphs; those tools have larger schemas and
+extra round-trips that you don't want in a hot loop.
+
+### Tool naming and prefix policy
+
+Every KeeperHub tool — native or MCP-bridged — lives under the
+`keeperhub_` namespace. When an MCP tool name collides with a native
+tool, the MCP version is renamed to `keeperhub_workflow_<name>` so an
+agent can disambiguate. Today the only collision is around execution
+status:
+
+| Tool | What it tracks |
+|---|---|
+| `keeperhub_get_execution_status` | A *direct* (single REST call) execution — the kind `transfer_funds` / `contract_call` / `check_and_execute` create. |
+| `keeperhub_workflow_get_execution_status` | A *workflow run* started by `keeperhub_execute_workflow`. |
+
+Renames are logged at `INFO` on the `langchain_keeperhub.toolkit`
+logger, so you can grep for them during integration. The system prompt
+in `examples/workflow_agent.py` explicitly tells the model which tool
+to use when, which is the recommended pattern.
+
+### Filtering the tool surface
+
+`mcp_include` and `mcp_exclude` accept the **server-side** tool names
+(without the `keeperhub_` prefix). `tools_documentation` is excluded by
+default because it is a meta-tool that confuses agents and burns prompt
+tokens. To opt back in, pass an explicit `mcp_exclude=set()` or your
+own collection.
+
+```python
+toolkit = KeeperHubToolkit(
+    workflows=True,
+    mcp_include={"list_workflows", "execute_workflow", "get_execution_status"},
+)
+```
+
+Unknown names in `mcp_include` log a `WARNING` but do not raise —
+server tool names can change between KeeperHub releases and we'd
+rather your agent keep running on the tools that *did* match.
+
+### `get_tools()` vs `aget_tools()`
+
+When `workflows=True`, MCP tools must be loaded asynchronously, so
+`KeeperHubToolkit.get_tools()` raises a clear `RuntimeError` directing
+you to `await toolkit.aget_tools()`. We deliberately do not spin up a
+hidden event loop here — agents using workflow tools are already in
+async land (LangGraph), and a silent `asyncio.run` would only paper
+over a real architectural mismatch. Existing sync callers (no
+workflows) keep working unchanged.
+
 ## Architecture
 
 ```
 LangChain Agent
   └── KeeperHubToolkit
-        ├── ListChainsTool ─────────┐
-        ├── FetchContractABITool ───┤
-        ├── GetWalletAddressTool ───┤
-        ├── TransferFundsTool ──────┤
-        ├── ContractCallTool ───────┼── KeeperHubClient (httpx) ──► KeeperHub REST API
-        ├── CheckAndExecuteTool ────┤        │                       (app.keeperhub.com)
-        ├── GetExecutionStatusTool ─┤        │
-        └── ListExecutionsTool* ────┘        ▼
-                                       ExecutionStore
-                                       (SQLite default, optional)
+        ├── Native tools — hot path (always on)
+        │     ├── ListChainsTool ─────────┐
+        │     ├── FetchContractABITool ───┤
+        │     ├── GetWalletAddressTool ───┤
+        │     ├── TransferFundsTool ──────┤
+        │     ├── ContractCallTool ───────┼── KeeperHubClient (httpx) ──► KeeperHub REST API
+        │     ├── CheckAndExecuteTool ────┤        │                       (app.keeperhub.com)
+        │     ├── GetExecutionStatusTool ─┤        │
+        │     └── ListExecutionsTool* ────┘        ▼
+        │                                    ExecutionStore
+        │                                    (SQLite default, optional)
+        │
+        └── MCP-bridged tools — cold path (workflows=True)
+              └── KeeperHubMCPLoader ──► langchain-mcp-adapters ──► KeeperHub MCP Server
+                                                                   (app.keeperhub.com/mcp)
 
 * ListExecutionsTool only registered when history=... is set.
 ```
