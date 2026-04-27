@@ -9,6 +9,7 @@ description = "LangChain toolkit for reliable Web3 execution via KeeperHub"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
+keywords = ["agents", "ethereum", "langchain", "web3"]
 authors = [
     { name = "Devendra" },
 ]
@@ -23,12 +24,19 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
-    "langchain-core>=0.3",
+    "langchain-core>=0.3,<0.4",
     "httpx>=0.27",
     "pydantic>=2",
 ]
 
 [project.optional-dependencies]
+examples = [
+    "langchain-google-genai",
+    "langchain-openai",
+    "openai",
+    "langgraph",
+    "python-dotenv",
+]
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",

@@ -48,6 +48,26 @@ result = agent.invoke(
 print(result["messages"][-1].content)
 ```
 
+For safer local development, you can force write tools to only target testnets:
+
+```python
+toolkit = KeeperHubToolkit(testnet_only=True)
+```
+
+This blocks `transfer_funds`, `contract_call`, and `check_and_execute` when the
+resolved network is not marked as a testnet by KeeperHub's chain registry.
+For stricter control, also allowlist the exact chain IDs your app may write to:
+
+```python
+toolkit = KeeperHubToolkit(
+    testnet_only=True,
+    allowed_chain_ids={"11155111", "84532"},  # Sepolia, Base Sepolia
+)
+```
+
+With an allowlist, all other write networks are treated as unsupported before
+any transaction request is sent.
+
 See `examples/basic_agent.py` for a complete runnable script.
 
 ## Environment Variables
@@ -63,15 +83,47 @@ See `examples/basic_agent.py` for a complete runnable script.
 |---|---|---|
 | `keeperhub_list_chains` | `GET /api/chains` | List supported blockchain networks |
 | `keeperhub_fetch_contract_abi` | `GET /api/chains/{id}/abi` | Fetch verified contract ABI |
+| `keeperhub_get_wallet_address` | `GET /api/user` | Get the connected KeeperHub wallet address from the user profile |
 | `keeperhub_transfer_funds` | `POST /api/execute/transfer` | Send native or ERC-20 tokens |
 | `keeperhub_contract_call` | `POST /api/execute/contract-call` | Read/write any smart contract |
 | `keeperhub_check_and_execute` | `POST /api/execute/check-and-execute` | Conditional read-then-write |
 | `keeperhub_get_execution_status` | `GET /api/execute/{id}/status` | Poll execution status and tx hash |
 
+`keeperhub_get_wallet_address` reads the authenticated KeeperHub user profile and
+returns its `walletAddress`. If no wallet is connected, the tool returns a
+warning telling the agent to ask the user to create/connect a KeeperHub wallet
+or explicitly provide the address to use.
+
+## Retries, timeouts & errors
+
+`KeeperHubClient` keeps retry behavior narrow and explicit:
+
+| Failure | Retries | Backoff |
+|---|---|---|
+| Network error (`httpx.HTTPError`) on `GET` | 3 | linear: 1s, 2s, 3s |
+| Network error (`httpx.HTTPError`) on non-`GET` | 0 | no retry (prevents duplicate writes) |
+| HTTP 429 (rate limit) | 3 | honors `Retry-After` header |
+| HTTP 4xx (other) / 5xx | 0 — raises typed exception immediately | — |
+
+- Per-request timeout: **60s** (override via `KeeperHubClient(timeout=...)`).
+- Every retry and every 4xx/5xx response body is logged at `WARNING` /
+  `ERROR` on the `langchain_keeperhub.client` logger.
+- LangGraph agents have their own retry loop: when a tool raises, the error
+  is fed back to the LLM as a `ToolMessage` and the model may call the tool
+  again. Cap this with `config={"recursion_limit": N}` on
+  `agent.invoke` / `agent.stream` (see `examples/basic_agent.py`).
+
+To see retry/error logs, configure logging in your app:
+
+```python
+import logging
+logging.basicConfig(level=logging.INFO)
+```
+
 ## Write + poll pattern
 
 Write tools (`transfer_funds`, `contract_call`, `check_and_execute`) return
-JSON containing an `execution_id`. The agent should follow up with
+structured output containing an `execution_id`. The agent should follow up with
 `get_execution_status` to poll until the transaction settles and surface the
 final tx hash to the user.
 
@@ -97,6 +149,7 @@ LangChain Agent
   └── KeeperHubToolkit
         ├── ListChainsTool ─────────┐
         ├── FetchContractABITool ───┤
+        ├── GetWalletAddressTool ───┤
         ├── TransferFundsTool ──────┤
         ├── ContractCallTool ───────┼── KeeperHubClient (httpx)
         ├── CheckAndExecuteTool ────┤       │
