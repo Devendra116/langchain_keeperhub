@@ -30,6 +30,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+workflows = [
+    "langchain-mcp-adapters>=0.2,<0.3",
+]
 examples = [
     "langchain-google-genai",
     "langchain-openai",
