@@ -57,9 +57,13 @@ class ContractCallTool(_KeeperHubToolBase):
 
     name: str = "keeperhub_contract_call"
     description: str = (
-        "Read from or write to any smart contract function on a supported "
-        "chain via KeeperHub. Read calls return the result directly. "
-        "Write calls return an execution_id to poll with get_execution_status."
+        "Calls one contract function: reads return a `result` right away; writes "
+        "return `execution_id` (poll with `keeperhub_get_execution_status`). "
+        "Use for a single read or a single unconditional write (e.g. approve, "
+        "balanceOf). For 'only write if this read passes a check' use "
+        "`keeperhub_check_and_execute` instead. ABI is optional (auto-fetched); "
+        "use `keeperhub_fetch_contract_abi` if the contract is unverified or you "
+        "need the exact signature. Writes need wallet gas (and value/approvals if the call requires them)."
     )
     args_schema: type[BaseModel] = ContractCallInput
 

@@ -30,10 +30,10 @@ class FetchContractABITool(_KeeperHubToolBase):
 
     name: str = "keeperhub_fetch_contract_abi"
     description: str = (
-        "Fetch the ABI of a verified smart contract from its chain's block "
-        "explorer via KeeperHub. Returns the ABI JSON array with function "
-        "signatures, inputs, and outputs. Use this to discover callable "
-        "functions before using contract_call."
+        "Loads a verified contract's ABI from the block explorer (JSON array of functions). "
+        "Use when you must know exact function names and argument shapes before "
+        "`keeperhub_contract_call` or `keeperhub_check_and_execute`, or when ABI "
+        "auto-fetch may fail. Only works if the contract is verified on that chain."
     )
     args_schema: type[BaseModel] = FetchContractABIInput
 

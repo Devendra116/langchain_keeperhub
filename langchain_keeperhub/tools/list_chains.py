@@ -28,10 +28,10 @@ class ListChainsTool(_KeeperHubToolBase):
 
     name: str = "keeperhub_list_chains"
     description: str = (
-        "List all blockchain networks supported by KeeperHub. "
-        "Returns chain IDs, names, native token symbols, block explorer URLs, "
-        "and whether each chain is a testnet. Call this before transfer or "
-        "contract_call if you need to confirm a network name or chain ID."
+        "Lists chains KeeperHub supports (id, name, symbol, explorer, testnet flag). "
+        "Use when you are unsure of the `network` string or chain ID before "
+        "`keeperhub_transfer_funds` or `keeperhub_contract_call`, or when the user "
+        "asks what networks are available. Read-only — no wallet or funds required."
     )
     args_schema: type[BaseModel] = ListChainsInput
 

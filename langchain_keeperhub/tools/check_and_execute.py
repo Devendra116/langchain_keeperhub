@@ -71,9 +71,12 @@ class CheckAndExecuteTool(_KeeperHubToolBase):
 
     name: str = "keeperhub_check_and_execute"
     description: str = (
-        "Read a smart contract value, check it against a condition "
-        "(eq/neq/gt/lt/gte/lte), and execute a write action only if the "
-        "condition is met. Returns condition result and execution_id if triggered."
+        "Reads one on-chain value, compares it with eq|neq|gt|lt|gte|lte to a "
+        "target, and runs one write only if that check passes (one guarded flow). "
+        "Use when the write must depend on fresh read data (e.g. only approve if "
+        "allowance is low). Not for plain sends — use `keeperhub_transfer_funds` "
+        "or `keeperhub_contract_call`. If a write runs, you get `execution_id` — "
+        "poll with `keeperhub_get_execution_status`."
     )
     args_schema: type[BaseModel] = CheckAndExecuteInput
 

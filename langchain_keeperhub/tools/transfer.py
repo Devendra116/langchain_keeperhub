@@ -51,9 +51,13 @@ class TransferFundsTool(_KeeperHubToolBase):
 
     name: str = "keeperhub_transfer_funds"
     description: str = (
-        "Transfer native tokens (ETH, MATIC, etc.) or ERC-20 tokens to a "
-        "recipient address on a supported blockchain network via KeeperHub. "
-        "Returns an execution_id to poll with get_execution_status."
+        "Sends native coin (omit token_address) or an ERC-20 (pass token contract) "
+        "from the KeeperHub wallet to a recipient. "
+        "Use for simple sends/payments — not for arbitrary contract logic "
+        "(use `keeperhub_contract_call`). "
+        "Needs a linked wallet with enough balance and gas; confirm recipient and "
+        "amount with the user. Returns `execution_id` — then call "
+        "`keeperhub_get_execution_status` until done."
     )
     args_schema: type[BaseModel] = TransferFundsInput
 

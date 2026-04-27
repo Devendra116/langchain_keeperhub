@@ -25,11 +25,10 @@ class GetWalletAddressTool(_KeeperHubToolBase):
 
     name: str = "keeperhub_get_wallet_address"
     description: str = (
-        "Get the wallet address connected to the authenticated KeeperHub "
-        "account. Use this when the user asks for their wallet address, their "
-        "KeeperHub wallet, or says 'my wallet'. If no KeeperHub wallet is "
-        "connected, returns a warning asking the user to create/connect one "
-        "or explicitly provide an address."
+        "Returns this account's linked EVM wallet address. "
+        "Use when the user asks for their wallet, 'my address', or the sender/from "
+        "address tied to KeeperHub. If no wallet is linked, the response says so "
+        "instead of returning an address."
     )
     args_schema: type[BaseModel] = GetWalletAddressInput
 

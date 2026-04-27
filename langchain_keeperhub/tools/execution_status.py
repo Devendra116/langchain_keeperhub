@@ -29,10 +29,11 @@ class GetExecutionStatusTool(_KeeperHubToolBase):
 
     name: str = "keeperhub_get_execution_status"
     description: str = (
-        "Check the status of a KeeperHub execution by its execution_id. "
-        "Returns status (pending/running/completed/failed), transaction hash, "
-        "gas used, block explorer link, and error details if failed. "
-        "Use this after transfer or contract_call to confirm completion."
+        "Looks up status for an `execution_id` from `keeperhub_transfer_funds`, "
+        "a write from `keeperhub_contract_call`, or `keeperhub_check_and_execute`. "
+        "Call it after those tools return `execution_id`, and repeat while status "
+        "is still pending or running. Returns final state, tx hash, explorer link, "
+        "and errors if the run failed."
     )
     args_schema: type[BaseModel] = GetExecutionStatusInput
 
