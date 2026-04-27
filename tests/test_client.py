@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 import respx
@@ -22,7 +22,7 @@ from langchain_keeperhub._exceptions import (
     raise_for_status,
 )
 from langchain_keeperhub._types import _validate_positive_decimal_string
-from langchain_keeperhub.client import KeeperHubClient, _redact
+from langchain_keeperhub.client import KeeperHubClient, _chains_payload_to_rows, _redact
 
 from .conftest import TEST_API_KEY, TEST_BASE_URL
 
@@ -55,9 +55,33 @@ def test_redact_shortens_large_abi_payload():
     assert _redact({"abi": "x" * 65}) == {"abi": "<abi 65 chars>"}
 
 
+def test_chains_payload_to_rows_accepts_wrapped_and_top_level_list():
+    row = {"chainId": 1, "name": "ethereum", "id": "ethereum"}
+    assert _chains_payload_to_rows({"data": [row]}) == [row]
+    assert _chains_payload_to_rows([row]) == [row]
+    assert _chains_payload_to_rows({}) == []
+    assert _chains_payload_to_rows({"data": "bad"}) == []
+
+
 def test_positive_decimal_validator_rejects_invalid_decimal():
     with pytest.raises(ValueError, match="positive decimal string"):
         _validate_positive_decimal_string("not-a-decimal")
+
+
+@pytest.mark.asyncio
+async def test_get_http_ignores_cross_loop_close_runtime_error():
+    client = KeeperHubClient(api_key=TEST_API_KEY, base_url=TEST_BASE_URL)
+    old_http = AsyncMock()
+    old_http.is_closed = False
+    old_http.aclose.side_effect = RuntimeError("Event loop is closed")
+
+    client._http = old_http
+    client._http_loop_id = -1
+
+    new_http = await client._get_http()
+    assert new_http is not old_http
+    old_http.aclose.assert_awaited_once()
+    await client.aclose()
 
 
 @respx.mock
@@ -112,6 +136,30 @@ async def test_list_chains_include_disabled_sets_query_param(
     await client.list_chains(include_disabled=True)
 
     assert route.calls.last.request.url.params["includeDisabled"] == "true"
+    await client.aclose()
+
+
+@respx.mock
+async def test_transfer_when_chains_returns_top_level_array(client: KeeperHubClient):
+    """Some deployments return a JSON array from GET /api/chains instead of {data: [...]}."""
+    respx.get(f"{TEST_BASE_URL}/api/chains").mock(
+        return_value=Response(
+            200,
+            json=[{"chainId": 1, "name": "ethereum", "id": "ethereum"}],
+        )
+    )
+    route = respx.post(f"{TEST_BASE_URL}/api/execute/transfer").mock(
+        return_value=Response(
+            200, json={"executionId": "direct_42", "status": "completed"}
+        )
+    )
+    result = await client.transfer(
+        network="ethereum",
+        recipient_address="0xabc",
+        amount="0.1",
+    )
+    assert result["executionId"] == "direct_42"
+    assert _sent_json(route)["network"] == "1"
     await client.aclose()
 
 

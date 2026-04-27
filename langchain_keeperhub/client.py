@@ -39,6 +39,17 @@ def _redact(payload: dict[str, Any] | None) -> dict[str, Any] | None:
     return safe
 
 
+def _chains_payload_to_rows(payload: Any) -> list[Any]:
+    """Normalize GET /api/chains JSON: ``{data: [...]}`` or a top-level array."""
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        data = payload.get("data")
+        if isinstance(data, list):
+            return data
+    return []
+
+
 class KeeperHubClient:
     """Thin async wrapper around KeeperHub's REST API.
 
@@ -102,7 +113,13 @@ class KeeperHubClient:
                 and not old_http.is_closed
                 and self._http_loop_id != loop_id
             ):
-                await old_http.aclose()
+                try:
+                    await old_http.aclose()
+                except RuntimeError as exc:
+                    # Tool calls may run on short-lived loops via asyncio.run().
+                    # If the previous loop is already closed, best-effort close.
+                    if "Event loop is closed" not in str(exc):
+                        raise
             self._http = httpx.AsyncClient(
                 base_url=self._base_url,
                 timeout=self._timeout,
@@ -134,7 +151,7 @@ class KeeperHubClient:
 
         if self._network_alias_to_chain_id is None:
             chains = await self.list_chains(include_disabled=True)
-            data = chains.get("data", [])
+            data = _chains_payload_to_rows(chains)
             alias_map: dict[str, str] = {}
             testnet_map: dict[str, bool | None] = {}
             for item in data:
