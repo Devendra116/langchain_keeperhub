@@ -59,6 +59,16 @@ class ServerError(KeeperHubError):
     """5xx — KeeperHub server error."""
 
 
+class MCPDependencyError(KeeperHubError):
+    """Raised when ``langchain-mcp-adapters`` is required but not installed.
+
+    The MCP loader is the only consumer today; the optional ``[workflows]``
+    extra brings in the dependency. Keeping a typed exception lets callers
+    distinguish "you forgot to install the extra" from a real network or
+    auth failure.
+    """
+
+
 _STATUS_MAP: dict[int, type[KeeperHubError]] = {
     401: AuthenticationError,
     404: NotFoundError,

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "langchain-keeperhub"
-version = "0.2.0"
+version = "0.3.0"
 description = "LangChain toolkit for reliable Web3 execution via KeeperHub"
 readme = "README.md"
 license = "MIT"
@@ -30,6 +30,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+workflows = [
+    "langchain-mcp-adapters>=0.2,<0.3",
+]
 examples = [
     "langchain-google-genai",
     "langchain-openai",

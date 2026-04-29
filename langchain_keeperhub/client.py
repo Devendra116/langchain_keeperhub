@@ -126,6 +126,12 @@ class KeeperHubClient:
         """Optional execution-history store; ``None`` when persistence is off."""
         return self._history
 
+    @property
+    def api_key(self) -> str:
+        """Resolved API key. Used by sibling subsystems (e.g. the MCP loader)
+        to avoid re-resolving the env var and getting out of sync."""
+        return self._api_key
+
     # -- lifecycle ------------------------------------------------------------
 
     async def _get_http(self) -> httpx.AsyncClient:
