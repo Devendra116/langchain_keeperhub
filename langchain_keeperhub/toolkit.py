@@ -95,7 +95,7 @@ class KeeperHubToolkit(BaseToolkit):
 
         toolkit = KeeperHubToolkit(api_key="kh_...")
         tools = toolkit.get_tools()
-        # pass *tools* to create_react_agent, AgentExecutor, or LangGraph
+        # pass *tools* to create_agent, AgentExecutor, or LangGraph
 
     Workflow-management tools (opt-in)::
 

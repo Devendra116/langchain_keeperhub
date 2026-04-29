@@ -4,10 +4,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import warnings
 from dotenv import load_dotenv
+from langchain.agents import create_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.prebuilt import create_react_agent
 from langchain_keeperhub import KeeperHubToolkit
 
 YELLOW, GREEN, CYAN, RESET = "\033[93m", "\033[92m", "\033[96m", "\033[0m"
@@ -52,11 +51,11 @@ async def main() -> None:
             print(f"\nKeeperHub Workflow Demo | tools={len(tools)}", flush=True)
             for t in tools:
                 print(f"  - {t.name}", flush=True)
-            agent = create_react_agent(
-                ChatGoogleGenerativeAI(
+            agent = create_agent(
+                model=ChatGoogleGenerativeAI(
                     model="gemini-2.5-flash", temperature=0, max_retries=0
                 ),
-                tools,
+                tools=tools,
             )
             payload = {"messages": [("system", SYSTEM_PROMPT), ("user", USER_PROMPT)]}
             print("\nRunning...", flush=True)

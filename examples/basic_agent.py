@@ -1,7 +1,7 @@
 """Minimal Gemini example: LangChain ReAct agent with KeeperHub tools.
 
 Prerequisites:
-    pip install langchain-keeperhub langchain-google-genai langgraph python-dotenv
+    pip install langchain-keeperhub langchain langchain-google-genai langgraph python-dotenv
 
 Environment variables:
     KEEPERHUB_API_KEY  -- your org-scoped kh_ key
@@ -9,8 +9,8 @@ Environment variables:
 """
 
 from dotenv import load_dotenv
+from langchain.agents import create_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.prebuilt import create_react_agent
 
 from langchain_keeperhub import KeeperHubToolkit
 
@@ -22,7 +22,7 @@ def main() -> None:
     tools = toolkit.get_tools()
 
     llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
-    agent = create_react_agent(llm, tools)
+    agent = create_agent(model=llm, tools=tools)
 
     result = agent.invoke(
         {"messages": [("user", "Transfer 2 USDC(0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582) token to 0x3E67cc2C7fFf86d9870dB9D02c43e789B52FB296 on Polygon Amoy (chain ID: 80002), my wallet address is 0x0c30281118fdfA0e51cd517A38BBFD191C1f9b8a")]}

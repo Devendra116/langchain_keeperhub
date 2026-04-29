@@ -20,16 +20,22 @@ cd langchain-keeperhub
 pip install -e ".[dev]"
 ```
 
+## Version compatibility
+
+- `langchain-keeperhub>=0.4.0` targets the LangChain v1 ecosystem (`langchain-core>=1.3,<2`).
+- If your app is still on `langchain-core 0.3.x`, stay on `langchain-keeperhub 0.3.x`.
+- For reproducible installs in production, prefer pinning your app's direct dependencies and committing a lock file.
+
 ## Quick Start
 
 ```bash
-pip install langchain-keeperhub langchain-google-genai langgraph python-dotenv
+pip install langchain-keeperhub langchain langchain-google-genai langgraph python-dotenv
 ```
 
 ```python
 from dotenv import load_dotenv
+from langchain.agents import create_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.prebuilt import create_react_agent
 
 from langchain_keeperhub import KeeperHubToolkit
 
@@ -38,9 +44,9 @@ load_dotenv()
 toolkit = KeeperHubToolkit()  # reads KEEPERHUB_API_KEY from env
 tools = toolkit.get_tools()
 
-agent = create_react_agent(
-    ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0),
-    tools,
+agent = create_agent(
+    model=ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0),
+    tools=tools,
 )
 result = agent.invoke(
     {"messages": [("user", "What blockchain networks does KeeperHub support?")]}
@@ -109,7 +115,7 @@ or explicitly provide the address to use.
 - Per-request timeout: **60s** (override via `KeeperHubClient(timeout=...)`).
 - Every retry and every 4xx/5xx response body is logged at `WARNING` /
   `ERROR` on the `langchain_keeperhub.client` logger.
-- LangGraph agents have their own retry loop: when a tool raises, the error
+- LangChain/LangGraph agents have their own retry loop: when a tool raises, the error
   is fed back to the LLM as a `ToolMessage` and the model may call the tool
   again. Cap this with `config={"recursion_limit": N}` on
   `agent.invoke` / `agent.stream` (see `examples/basic_agent.py`).
@@ -217,7 +223,7 @@ async def main():
     )
     try:
         tools = await toolkit.aget_tools()  # async — MCP loads asynchronously
-        # ... pass *tools* to create_react_agent / LangGraph
+        # ... pass *tools* to create_agent / LangGraph
     finally:
         await toolkit.aclose()
 

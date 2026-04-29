@@ -20,7 +20,7 @@ landed: the SDK now has a memory that survives process restarts and shared
 deployments.
 
 Prerequisites:
-    pip install langchain-keeperhub langchain-google-genai langgraph python-dotenv
+    pip install langchain-keeperhub langchain langchain-google-genai langgraph python-dotenv
 
 Environment variables:
     KEEPERHUB_API_KEY  -- your org-scoped kh_ key
@@ -30,11 +30,12 @@ Environment variables:
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 
 from dotenv import load_dotenv
+from langchain.agents import create_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.prebuilt import create_react_agent
 
 from langchain_keeperhub import (
     ExecutionKind,
@@ -43,7 +44,7 @@ from langchain_keeperhub import (
     SqliteExecutionStore,
 )
 from langchain_keeperhub.history import utc_now_iso
-import logging
+
 logging.basicConfig(level=logging.DEBUG)
 
 # A visible artifact next to this script so devs can poke at it
@@ -57,7 +58,7 @@ async def seed(db_path: Path) -> None:
     Swap this for a real transfer once you have a funded testnet wallet:
 
         toolkit = KeeperHubToolkit(history=True, testnet_only=True)
-        agent   = create_react_agent(llm, toolkit.get_tools())
+        agent   = create_agent(model=llm, tools=toolkit.get_tools())
         agent.invoke({"messages": [
             ("user", "Transfer 0.01 native to 0x... on Polygon Amoy"),
         ]})
@@ -112,7 +113,7 @@ def recall(db_path: Path) -> None:
     )
     try:
         llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
-        agent = create_react_agent(llm, toolkit.get_tools())
+        agent = create_agent(model=llm, tools=toolkit.get_tools())
 
         # Fresh message thread — no chat memory of the seed step. The agent
         # has to reach for keeperhub_list_executions to answer at all.
