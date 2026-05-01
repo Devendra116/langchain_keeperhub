@@ -27,10 +27,10 @@ class GetExecutionStatusTool(_KeeperHubToolBase):
     gas used, explorer link, and timing information.
     """
 
-    name: str = "keeperhub_get_execution_status"
+    name: str = "get_execution_status"
     description: str = (
-        "Looks up status for an `execution_id` from `keeperhub_transfer_funds`, "
-        "a write from `keeperhub_contract_call`, or `keeperhub_check_and_execute`. "
+        "Looks up status for an `execution_id` from `transfer_funds`, "
+        "a write from `contract_call`, or `check_and_execute`. "
         "Call it after those tools return `execution_id`, and repeat while status "
         "is still pending or running. Returns final state, tx hash, explorer link, "
         "and errors if the run failed."

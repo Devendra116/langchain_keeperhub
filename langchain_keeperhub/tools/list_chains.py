@@ -26,11 +26,11 @@ class ListChainsTool(_KeeperHubToolBase):
     or to look up a chain ID for a subsequent operation.
     """
 
-    name: str = "keeperhub_list_chains"
+    name: str = "list_chains"
     description: str = (
-        "Lists chains KeeperHub supports (id, name, symbol, explorer, testnet flag). "
+        "Lists supported chains (id, name, symbol, explorer, testnet flag). "
         "Use when you are unsure of the `network` string or chain ID before "
-        "`keeperhub_transfer_funds` or `keeperhub_contract_call`, or when the user "
+        "`transfer_funds` or `contract_call`, or when the user "
         "asks what networks are available. Read-only — no wallet or funds required."
     )
     args_schema: type[BaseModel] = ListChainsInput

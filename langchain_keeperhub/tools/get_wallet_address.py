@@ -23,7 +23,7 @@ _WALLET_NOT_CONNECTED_WARNING = (
 class GetWalletAddressTool(_KeeperHubToolBase):
     """Fetch the wallet address connected to the authenticated account."""
 
-    name: str = "keeperhub_get_wallet_address"
+    name: str = "get_wallet_address"
     description: str = (
         "Returns this account's linked EVM wallet address. "
         "Use when the user asks for their wallet, 'my address', or the sender/from "

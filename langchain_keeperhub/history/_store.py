@@ -25,7 +25,7 @@ class ExecutionStore(Protocol):
       called for a known id. It must be a no-op when the id is unknown
       (returns ``None``) — never raise.
     * ``list`` and ``get`` are read APIs for both Python users and the
-      ``keeperhub_list_executions`` agent tool.
+      ``list_execution_history`` agent tool.
     * ``aclose`` releases any resources the store holds. It must be safe
       to call multiple times.
     """

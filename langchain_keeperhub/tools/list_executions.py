@@ -33,7 +33,7 @@ class ListExecutionsInput(BaseModel):
         default=None,
         description=(
             "Filter by canonical chain ID string (e.g. \"1\", \"8453\"). "
-            "Use the same chain ID returned by `keeperhub_list_chains`."
+            "Use the same chain ID returned by `list_chains`."
         ),
     )
     since: str | None = Field(
@@ -60,13 +60,13 @@ class ListExecutionsTool(_KeeperHubToolBase):
     Only available when the client/toolkit was created with ``history=...``.
     """
 
-    name: str = "keeperhub_list_executions"
+    name: str = "list_execution_history"
     description: str = (
-        "Returns recent KeeperHub write executions (transfers, contract writes, "
+        "Returns recent write executions (transfers, contract writes, "
         "check-and-execute). Filter by status, kind, network, since (ISO-8601), "
         "and limit. Use this BEFORE issuing a write to check whether the same "
         "operation already happened, AFTER a write to find the execution_id for "
-        "`keeperhub_get_execution_status`, or when the user asks about past "
+        "`get_execution_status`, or when the user asks about past "
         "activity. Newest first. Read-only and does not consume gas."
     )
     args_schema: type[BaseModel] = ListExecutionsInput

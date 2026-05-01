@@ -5,14 +5,14 @@ store turned on. The example runs in two halves on the *same* SQLite file:
 
   1. *Act* — something writes a transaction. In real code this is the
      toolkit auto-persisting whenever the agent calls
-     ``keeperhub_transfer_funds`` / ``keeperhub_contract_call`` / etc. (writes
+     ``transfer_funds`` / ``contract_call`` / etc. (writes
      only — reads are skipped). For a self-contained demo we seed two rows
      programmatically so this example runs with just a ``KEEPERHUB_API_KEY``
      and no funded wallet.
 
   2. *Recall* — a *fresh* agent is spun up with zero chat memory of step 1
      and asked "what did I just do?". The only way it can answer is by
-     calling ``keeperhub_list_executions``, which reads the same SQLite
+     calling ``list_execution_history``, which reads the same SQLite
      file we wrote to above.
 
 That second turn is the bit that wasn't possible before the history store
@@ -116,7 +116,7 @@ def recall(db_path: Path) -> None:
         agent = create_agent(model=llm, tools=toolkit.get_tools())
 
         # Fresh message thread — no chat memory of the seed step. The agent
-        # has to reach for keeperhub_list_executions to answer at all.
+        # has to reach for list_execution_history to answer at all.
         result = agent.invoke(
             {
                 "messages": [
@@ -124,7 +124,7 @@ def recall(db_path: Path) -> None:
                         "system",
                         "You are Ledger, a treasurer agent for a KeeperHub user. "
                         "For any question about past activity, ALWAYS call "
-                        "keeperhub_list_executions first. Render the result as a "
+                        "list_execution_history first. Render the result as a "
                         "compact markdown table with columns: execution_id, kind, "
                         "network, status, tx hash. After the table, add one short "
                         "sentence highlighting anything still pending so the user "

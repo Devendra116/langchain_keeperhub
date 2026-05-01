@@ -147,7 +147,7 @@ async def test_aget_tools_returns_native_only_when_workflows_off() -> None:
     assert len(tools) == 7
 
 
-async def test_aget_tools_appends_mcp_tools_with_prefix(
+async def test_aget_tools_appends_mcp_tools(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cls, aload = _patch_loader(
@@ -159,9 +159,8 @@ async def test_aget_tools_appends_mcp_tools_with_prefix(
     tools = await toolkit.aget_tools()
     names = [t.name for t in tools]
 
-    assert "keeperhub_list_workflows" in names
-    assert "keeperhub_execute_workflow" in names
-    assert len([n for n in names if not n.startswith("keeperhub_")]) == 0
+    assert "list_workflows" in names
+    assert "execute_workflow" in names
     cls.assert_called_once()
     kwargs = cls.call_args.kwargs
     assert kwargs["api_key"] == "kh_test"
@@ -177,7 +176,7 @@ async def test_mcp_dict_args_schema_strips_json_schema_metadata(
     )
     toolkit = KeeperHubToolkit(api_key="kh_test", workflows=True)
     tools = await toolkit.aget_tools()
-    mcp = next(t for t in tools if t.name == "keeperhub_list_workflows")
+    mcp = next(t for t in tools if t.name == "list_workflows")
     schema = mcp.args_schema
     assert isinstance(schema, dict)
     assert not _dict_contains_key(schema, "$schema")
@@ -195,12 +194,11 @@ async def test_collision_renamed_to_workflow_alias(
         tools = await toolkit.aget_tools()
 
     names = {t.name for t in tools}
-    assert "keeperhub_get_execution_status" in names
-    assert "keeperhub_workflow_get_execution_status" in names
-    # Native + renamed MCP both present, no duplicate names.
+    assert "get_execution_status" in names
+    assert "workflow_get_execution_status" in names
     assert len(names) == len(tools)
     assert any(
-        "renaming to 'keeperhub_workflow_get_execution_status'"
+        "renaming to 'workflow_get_execution_status'"
         in record.getMessage()
         for record in caplog.records
     )

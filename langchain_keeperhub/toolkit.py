@@ -10,13 +10,10 @@ forces use of :meth:`aget_tools` instead of :meth:`get_tools`.
 Naming policy for MCP tools
 ---------------------------
 
-Native tools live under the ``keeperhub_`` namespace. To keep the
-namespace consistent — and to give agents one mental model — MCP tools
-get the same prefix when they don't already have it. When prefixing
-would collide with a native tool name (today: ``get_execution_status``
-exists for both direct and workflow execution), the MCP tool is renamed
-to ``keeperhub_workflow_<orig>`` instead. The rename is logged at
-``INFO`` so it is visible during integration.
+When an MCP tool name collides with a native tool name (today:
+``get_execution_status`` exists for both direct and workflow execution),
+the MCP tool is renamed to ``workflow_<orig>`` instead. The rename is
+logged at ``INFO`` so it is visible during integration.
 
 JSON Schema on MCP tools
 ------------------------
@@ -48,8 +45,7 @@ from langchain_keeperhub.tools.list_chains import ListChainsTool
 from langchain_keeperhub.tools.list_executions import ListExecutionsTool
 from langchain_keeperhub.tools.transfer import TransferFundsTool
 
-_NATIVE_PREFIX = "keeperhub_"
-_WORKFLOW_PREFIX = "keeperhub_workflow_"
+_WORKFLOW_PREFIX = "workflow_"
 
 # Keys JSON Schema uses for meta / cross-document identity. Google GenAI
 # and other binders reject or warn on these on every tool round-trip.
@@ -114,7 +110,7 @@ class KeeperHubToolkit(BaseToolkit):
         history: Optional :class:`ExecutionStore` to persist write executions.
             Pass ``True`` to use the default :class:`SqliteExecutionStore`
             at ``~/.keeperhub/executions.db``. When set, the toolkit also
-            exposes a ``keeperhub_list_executions`` tool the agent can use
+            exposes a ``list_execution_history`` tool the agent can use
             to query past activity.
         workflows: When true, :meth:`aget_tools` also returns workflow
             management tools loaded from KeeperHub's MCP server. Off by
@@ -122,8 +118,7 @@ class KeeperHubToolkit(BaseToolkit):
             whose ``args_schema`` is a JSON dict are sanitized (e.g.
             ``$schema`` / ``$id`` removed) for LLM compatibility.
         mcp_url: MCP endpoint URL. Defaults to KeeperHub's hosted server.
-        mcp_include: Optional whitelist of MCP tool names (server-side
-            names, before the ``keeperhub_`` prefix is applied).
+        mcp_include: Optional whitelist of MCP tool names (server-side names).
         mcp_exclude: Optional blacklist of MCP tool names. When ``None``
             (default), ``tools_documentation`` is excluded; pass an empty
             set to keep every tool the server returns.
@@ -271,35 +266,25 @@ class KeeperHubToolkit(BaseToolkit):
         mcp_tools: list[BaseTool],
         native_tools: list[BaseTool],
     ) -> list[BaseTool]:
-        """Apply the prefix policy and resolve collisions with native tools.
+        """Resolve name collisions between MCP tools and native tools.
 
-        Rules (mirrored in the class docstring):
-
-        1. Tools already starting with ``keeperhub_`` are kept as-is.
-        2. Otherwise they get the ``keeperhub_`` prefix.
-        3. If the prefixed name collides with a native tool, the MCP
-           tool is renamed to ``keeperhub_workflow_<orig>`` and the
-           rename is logged at INFO.
+        MCP tools keep their original name unless it collides with a
+        native tool, in which case the MCP tool is renamed to
+        ``workflow_<orig>`` and the rename is logged at INFO.
         """
         native_names = {t.name for t in native_tools}
         result: list[BaseTool] = []
         for tool in mcp_tools:
             original = tool.name
-            base = (
-                original[len(_NATIVE_PREFIX):]
-                if original.startswith(_NATIVE_PREFIX)
-                else original
-            )
-            prefixed = f"{_NATIVE_PREFIX}{base}"
-            if prefixed in native_names:
-                final = f"{_WORKFLOW_PREFIX}{base}"
+            if original in native_names:
+                final = f"{_WORKFLOW_PREFIX}{original}"
                 logger.info(
                     "MCP tool '%s' collides with native '%s'; "
                     "renaming to '%s' for the workflow surface",
-                    original, prefixed, final,
+                    original, original, final,
                 )
             else:
-                final = prefixed
+                final = original
             renamed = _rename_tool(tool, final) if final != original else tool
             result.append(_sanitize_mcp_tool_json_schema(renamed))
         return result

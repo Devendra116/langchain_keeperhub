@@ -213,9 +213,9 @@ collisions before agents ever see them — see the README's
 | Meta | `tools_documentation` | Returns docs for the other MCP tools. **Excluded by default** in `KeeperHubMCPLoader` because it burns prompt tokens. |
 
 \* `get_execution_status` collides with the native
-`keeperhub_get_execution_status` (which polls direct REST executions),
+`get_execution_status` (which polls direct REST executions),
 so the toolkit renames the MCP version to
-`keeperhub_workflow_get_execution_status`. Always confirm against the
+`workflow_get_execution_status`. Always confirm against the
 upstream docs before assuming a tool is present — the catalog evolves
 with the platform and this snapshot is exactly that, a snapshot.
 

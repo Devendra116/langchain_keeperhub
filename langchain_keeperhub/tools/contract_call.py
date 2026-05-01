@@ -55,14 +55,14 @@ class ContractCallTool(_KeeperHubToolBase):
     ``get_execution_status`` until the transaction settles.
     """
 
-    name: str = "keeperhub_contract_call"
+    name: str = "contract_call"
     description: str = (
         "Calls one contract function: reads return a `result` right away; writes "
-        "return `execution_id` (poll with `keeperhub_get_execution_status`). "
+        "return `execution_id` (poll with `get_execution_status`). "
         "Use for a single read or a single unconditional write (e.g. approve, "
         "balanceOf). For 'only write if this read passes a check' use "
-        "`keeperhub_check_and_execute` instead. ABI is optional (auto-fetched); "
-        "use `keeperhub_fetch_contract_abi` if the contract is unverified or you "
+        "`check_and_execute` instead. ABI is optional (auto-fetched); "
+        "use `fetch_contract_abi` if the contract is unverified or you "
         "need the exact signature. Writes need wallet gas (and value/approvals if the call requires them)."
     )
     args_schema: type[BaseModel] = ContractCallInput

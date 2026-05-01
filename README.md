@@ -63,14 +63,14 @@ A complete script lives at `examples/basic_agent.py`.
 
 | Tool | Purpose |
 |---|---|
-| `keeperhub_list_chains` | List supported EVM networks |
-| `keeperhub_fetch_contract_abi` | Auto‑fetch verified ABIs |
-| `keeperhub_get_wallet_address` | Read the agent's KeeperHub wallet address |
-| `keeperhub_transfer_funds` | Send native or ERC‑20 tokens |
-| `keeperhub_contract_call` | Read or write any smart contract |
-| `keeperhub_check_and_execute` | Conditional read‑then‑write in one call |
-| `keeperhub_get_execution_status` | Poll execution and surface tx hash |
-| `keeperhub_list_executions` | Query past write executions *(when history is enabled)* |
+| `list_chains` | List supported EVM networks |
+| `fetch_contract_abi` | Auto‑fetch verified ABIs |
+| `get_wallet_address` | Read the agent's KeeperHub wallet address |
+| `transfer_funds` | Send native or ERC‑20 tokens |
+| `contract_call` | Read or write any smart contract |
+| `check_and_execute` | Conditional read‑then‑write in one call |
+| `get_execution_status` | Poll execution and surface tx hash |
+| `list_execution_history` | Query past write executions *(when history is enabled)* |
 
 Write tools return an `execution_id`; the agent calls `get_execution_status` to confirm the tx settled and report the hash back to the user.
 
@@ -99,7 +99,7 @@ toolkit = KeeperHubToolkit(history=True)
 toolkit = KeeperHubToolkit(history=SqliteExecutionStore("./executions.db"))
 ```
 
-When history is on, the toolkit also exposes `keeperhub_list_executions`, so the agent itself can answer questions like *"what did I send today?"* or *"did this transfer already go through?"* before issuing a new write.
+When history is on, the toolkit also exposes `list_execution_history`, so the agent itself can answer questions like *"what did I send today?"* or *"did this transfer already go through?"* before issuing a new write.
 
 Direct (non‑LLM) callers can use the same store from Python:
 
@@ -156,9 +156,9 @@ When to reach for which:
 | Send a transfer or contract call right now | Hot | Native REST tools |
 | Read on‑chain data, fetch ABIs, list chains | Hot | Native REST tools |
 | Compose / persist / run a recurring workflow | Cold | MCP‑bridged tools |
-| Have AI draft a workflow from a prompt | Cold | `keeperhub_ai_generate_workflow` |
+| Have AI draft a workflow from a prompt | Cold | `ai_generate_workflow` |
 
-When an MCP tool name collides with a native one (today only `get_execution_status`), the MCP version is renamed to `keeperhub_workflow_<name>` and the rename is logged. See `examples/workflow_agent.py` for an end‑to‑end demo where an agent generates a workflow from natural language, persists it, executes it, polls the run, and prints the resulting tx hash.
+When an MCP tool name collides with a native one (today only `get_execution_status`), the MCP version is renamed to `workflow_<name>` and the rename is logged. See `examples/workflow_agent.py` for an end‑to‑end demo where an agent generates a workflow from natural language, persists it, executes it, polls the run, and prints the resulting tx hash.
 
 ## Direct client usage (no LLM)
 

@@ -69,14 +69,14 @@ class CheckAndExecuteTool(_KeeperHubToolBase):
     ``execution_id`` to poll.
     """
 
-    name: str = "keeperhub_check_and_execute"
+    name: str = "check_and_execute"
     description: str = (
         "Reads one on-chain value, compares it with eq|neq|gt|lt|gte|lte to a "
         "target, and runs one write only if that check passes (one guarded flow). "
         "Use when the write must depend on fresh read data (e.g. only approve if "
-        "allowance is low). Not for plain sends — use `keeperhub_transfer_funds` "
-        "or `keeperhub_contract_call`. If a write runs, you get `execution_id` — "
-        "poll with `keeperhub_get_execution_status`."
+        "allowance is low). Not for plain sends — use `transfer_funds` "
+        "or `contract_call`. If a write runs, you get `execution_id` — "
+        "poll with `get_execution_status`."
     )
     args_schema: type[BaseModel] = CheckAndExecuteInput
 

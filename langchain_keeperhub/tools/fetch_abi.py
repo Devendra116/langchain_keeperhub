@@ -28,11 +28,11 @@ class FetchContractABITool(_KeeperHubToolBase):
     available functions, their parameters, and return types.
     """
 
-    name: str = "keeperhub_fetch_contract_abi"
+    name: str = "fetch_contract_abi"
     description: str = (
         "Loads a verified contract's ABI from the block explorer (JSON array of functions). "
         "Use when you must know exact function names and argument shapes before "
-        "`keeperhub_contract_call` or `keeperhub_check_and_execute`, or when ABI "
+        "`contract_call` or `check_and_execute`, or when ABI "
         "auto-fetch may fail. Only works if the contract is verified on that chain."
     )
     args_schema: type[BaseModel] = FetchContractABIInput

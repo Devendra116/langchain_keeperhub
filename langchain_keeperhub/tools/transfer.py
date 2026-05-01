@@ -49,15 +49,15 @@ class TransferFundsTool(_KeeperHubToolBase):
     ``execution_id`` to poll until the transaction completes.
     """
 
-    name: str = "keeperhub_transfer_funds"
+    name: str = "transfer_funds"
     description: str = (
         "Sends native coin (omit token_address) or an ERC-20 (pass token contract) "
         "from the KeeperHub wallet to a recipient. "
         "Use for simple sends/payments — not for arbitrary contract logic "
-        "(use `keeperhub_contract_call`). "
+        "(use `contract_call`). "
         "Needs a linked wallet with enough balance and gas; confirm recipient and "
         "amount with the user. Returns `execution_id` — then call "
-        "`keeperhub_get_execution_status` until done."
+        "`get_execution_status` until done."
     )
     args_schema: type[BaseModel] = TransferFundsInput
 
