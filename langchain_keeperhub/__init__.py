@@ -8,6 +8,13 @@ import logging as _logging
 _logging.getLogger(__name__).addHandler(_logging.NullHandler())
 
 from langchain_keeperhub.client import KeeperHubClient
+from langchain_keeperhub.ens import ENSClient
+from langchain_keeperhub.ens_chains import (
+    ENSChainProfile,
+    list_ens_chain_profiles,
+    resolve_ens_chain,
+    reverse_primary_name,
+)
 from langchain_keeperhub.history import (
     ExecutionKind,
     ExecutionRecord,
@@ -23,10 +30,14 @@ from langchain_keeperhub.tools import (
     GetWalletAddressTool,
     ListChainsTool,
     ListExecutionsTool,
+    ResolveENSTool,
+    ReverseResolveENSTool,
     TransferFundsTool,
 )
 
 __all__ = [
+    "ENSChainProfile",
+    "ENSClient",
     "KeeperHubClient",
     "KeeperHubToolkit",
     "CheckAndExecuteTool",
@@ -36,9 +47,14 @@ __all__ = [
     "GetWalletAddressTool",
     "ListChainsTool",
     "ListExecutionsTool",
+    "ResolveENSTool",
+    "ReverseResolveENSTool",
     "TransferFundsTool",
     "ExecutionKind",
     "ExecutionRecord",
     "ExecutionStore",
     "SqliteExecutionStore",
+    "list_ens_chain_profiles",
+    "resolve_ens_chain",
+    "reverse_primary_name",
 ]

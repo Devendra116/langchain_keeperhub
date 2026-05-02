@@ -9,12 +9,24 @@ from pydantic import Field
 
 from langchain_keeperhub._async_utils import run_sync
 from langchain_keeperhub.client import KeeperHubClient
+from langchain_keeperhub.ens import ENSClient
 
 
 class _KeeperHubToolBase(BaseTool):
     """Base class for KeeperHub tools with a shared client and sync bridge."""
 
     client: KeeperHubClient = Field(exclude=True)
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    def _run(self, **kwargs: Any) -> dict[str, Any]:
+        return run_sync(self._arun(**kwargs))
+
+
+class _ENSToolBase(BaseTool):
+    """Base class for ENS tools with a shared ENS client and sync bridge."""
+
+    ens_client: ENSClient = Field(exclude=True)
 
     model_config = {"arbitrary_types_allowed": True}
 

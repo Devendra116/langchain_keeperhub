@@ -25,8 +25,12 @@ def test_toolkit_exposes_shared_client_and_tools() -> None:
     tools = toolkit.get_tools()
 
     assert toolkit.client is toolkit._client
-    assert len(tools) == 7
-    assert all(tool.client is toolkit.client for tool in tools)
+    assert len(tools) == 9
+    for tool in tools:
+        if hasattr(tool, "client"):
+            assert tool.client is toolkit.client
+        if hasattr(tool, "ens_client"):
+            assert tool.ens_client is toolkit._ens_client
     assert toolkit.history is None
     assert not any(isinstance(t, ListExecutionsTool) for t in tools)
 
@@ -38,7 +42,7 @@ def test_toolkit_with_history_exposes_list_executions_tool(tmp_path: Path) -> No
         tools = toolkit.get_tools()
 
         assert toolkit.history is store
-        assert len(tools) == 8
+        assert len(tools) == 10
         assert any(isinstance(t, ListExecutionsTool) for t in tools)
     finally:
         store._close_sync()
@@ -47,20 +51,24 @@ def test_toolkit_with_history_exposes_list_executions_tool(tmp_path: Path) -> No
 async def test_toolkit_aclose_delegates_to_shared_client() -> None:
     toolkit = KeeperHubToolkit(api_key="kh_test")
     toolkit.client.aclose = AsyncMock()
+    toolkit._ens_client.aclose = AsyncMock()
 
     await toolkit.aclose()
 
     toolkit.client.aclose.assert_awaited_once()
+    toolkit._ens_client.aclose.assert_awaited_once()
 
 
 async def test_toolkit_async_context_manager_closes_shared_client() -> None:
     toolkit = KeeperHubToolkit(api_key="kh_test")
     toolkit.client.aclose = AsyncMock()
+    toolkit._ens_client.aclose = AsyncMock()
 
     async with toolkit as entered:
         assert entered is toolkit
 
     toolkit.client.aclose.assert_awaited_once()
+    toolkit._ens_client.aclose.assert_awaited_once()
 
 
 # -- workflows=True (MCP bridge) ---------------------------------------------
@@ -144,7 +152,7 @@ async def test_aget_tools_returns_native_only_when_workflows_off() -> None:
     """Async path still works without workflows; just returns natives."""
     toolkit = KeeperHubToolkit(api_key="kh_test")
     tools = await toolkit.aget_tools()
-    assert len(tools) == 7
+    assert len(tools) == 9
 
 
 async def test_aget_tools_appends_mcp_tools(
@@ -239,12 +247,14 @@ async def test_aclose_closes_both_subsystems(
     cls, _ = _patch_loader(monkeypatch, [])
     toolkit = KeeperHubToolkit(api_key="kh_test", workflows=True)
     toolkit.client.aclose = AsyncMock()
+    toolkit._ens_client.aclose = AsyncMock()
 
     await toolkit.aget_tools()  # forces loader instantiation
     await toolkit.aclose()
     await toolkit.aclose()  # idempotent
 
     toolkit.client.aclose.assert_awaited()
+    toolkit._ens_client.aclose.assert_awaited()
     cls.return_value.aclose.assert_awaited()
 
 
@@ -264,4 +274,4 @@ async def test_workflows_off_never_imports_mcp_module(
 
     toolkit = KeeperHubToolkit(api_key="kh_test")
     tools = await toolkit.aget_tools()
-    assert len(tools) == 7
+    assert len(tools) == 9

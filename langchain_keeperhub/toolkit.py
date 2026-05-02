@@ -29,12 +29,14 @@ from __future__ import annotations
 
 import copy
 import logging
+import os
 from collections.abc import Collection
 from typing import Any
 
 from langchain_core.tools import BaseTool, BaseToolkit
 
 from langchain_keeperhub.client import KeeperHubClient
+from langchain_keeperhub.ens import ENSClient
 from langchain_keeperhub.history._store import ExecutionStore
 from langchain_keeperhub.tools.check_and_execute import CheckAndExecuteTool
 from langchain_keeperhub.tools.contract_call import ContractCallTool
@@ -43,6 +45,8 @@ from langchain_keeperhub.tools.fetch_abi import FetchContractABITool
 from langchain_keeperhub.tools.get_wallet_address import GetWalletAddressTool
 from langchain_keeperhub.tools.list_chains import ListChainsTool
 from langchain_keeperhub.tools.list_executions import ListExecutionsTool
+from langchain_keeperhub.tools.resolve_ens import ResolveENSTool
+from langchain_keeperhub.tools.reverse_resolve_ens import ReverseResolveENSTool
 from langchain_keeperhub.tools.transfer import TransferFundsTool
 
 _WORKFLOW_PREFIX = "workflow_"
@@ -52,6 +56,15 @@ _WORKFLOW_PREFIX = "workflow_"
 _JSON_SCHEMA_LLM_METADATA_KEYS: frozenset[str] = frozenset({"$schema", "$id"})
 
 logger = logging.getLogger(__name__)
+
+
+def _ens_chain_from_env() -> int | str:
+    raw = os.environ.get("ENS_CHAIN_ID", "").strip()
+    if not raw:
+        return 1
+    if raw.isdigit():
+        return int(raw)
+    return raw
 
 
 def _strip_json_schema_llm_metadata(value: Any) -> Any:
@@ -122,6 +135,15 @@ class KeeperHubToolkit(BaseToolkit):
         mcp_exclude: Optional blacklist of MCP tool names. When ``None``
             (default), ``tools_documentation`` is excluded; pass an empty
             set to keep every tool the server returns.
+        ens_rpc_url: JSON-RPC URL used for **all** ENS calls when set (also
+            ``ENS_RPC_URL`` / ``ETH_RPC_URL``). When unset, each built-in
+            ``ens_chain`` uses that network's default public RPC.
+        ens_chain: Default chain for ENS tools: id (``1``, ``8453``, …) or
+            alias (``\"ethereum\"``, ``\"base\"``, ``\"sepolia\"``, ``\"base-sepolia\"``).
+            Falls back to ``ENS_CHAIN_ID`` env, then Ethereum mainnet (``1``).
+        ens_registry: Optional custom ENS registry (``0x`` + 40 hex). When set,
+            ``ens_rpc_url`` (or ``ENS_RPC_URL`` / ``ETH_RPC_URL``) is required.
+            Per-call ``chain`` on ENS tools is disabled.
     """
 
     def __init__(
@@ -136,6 +158,9 @@ class KeeperHubToolkit(BaseToolkit):
         mcp_url: str | None = None,
         mcp_include: Collection[str] | None = None,
         mcp_exclude: Collection[str] | None = None,
+        ens_rpc_url: str | None = None,
+        ens_chain: int | str | None = None,
+        ens_registry: str | None = None,
     ) -> None:
         self._client = KeeperHubClient(
             api_key,
@@ -143,6 +168,12 @@ class KeeperHubToolkit(BaseToolkit):
             testnet_only=testnet_only,
             allowed_chain_ids=allowed_chain_ids,
             history=history,
+        )
+        chain = ens_chain if ens_chain is not None else _ens_chain_from_env()
+        self._ens_client = ENSClient(
+            ens_rpc_url,
+            chain=chain,
+            registry=ens_registry,
         )
         self._workflows = workflows
         self._mcp_url = mcp_url
@@ -171,8 +202,9 @@ class KeeperHubToolkit(BaseToolkit):
         return self._client.history
 
     async def aclose(self) -> None:
-        """Close the shared KeeperHub client and the MCP loader (if used)."""
+        """Close the shared KeeperHub client, ENS client, and the MCP loader (if used)."""
         await self._client.aclose()
+        await self._ens_client.aclose()
         loader = self._mcp_loader
         if loader is not None:
             self._mcp_loader = None
@@ -191,6 +223,7 @@ class KeeperHubToolkit(BaseToolkit):
     def _native_tools(self) -> list[BaseTool]:
         """Build the native (REST-backed) tool list. Cheap; no caching."""
         c = self._client
+        e = self._ens_client
         tools: list[BaseTool] = [
             ListChainsTool(client=c),
             FetchContractABITool(client=c),
@@ -199,6 +232,8 @@ class KeeperHubToolkit(BaseToolkit):
             ContractCallTool(client=c),
             CheckAndExecuteTool(client=c),
             GetExecutionStatusTool(client=c),
+            ResolveENSTool(ens_client=e),
+            ReverseResolveENSTool(ens_client=e),
         ]
         if c.history is not None:
             tools.append(ListExecutionsTool(client=c))
