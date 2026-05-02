@@ -1,6 +1,19 @@
-# langchain-keeperhub
+<p align="center">
+  <img src="assets/logo.png" alt="langchain-keeperhub" width="140" />
+</p>
 
-**Give your LangChain agent the ability to send tokens, call smart contracts, and resolve ENS names — without ever touching a private key.**
+<h1 align="center">langchain-keeperhub</h1>
+
+<p align="center">
+  <strong>Give your LangChain agent the ability to send tokens, call smart contracts, and resolve ENS names — without ever touching a private key.</strong>
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/langchain-keeperhub/"><img src="https://img.shields.io/pypi/v/langchain-keeperhub?color=blue" alt="PyPI Package" /></a>
+
+</p>
+
+---
 
 `langchain-keeperhub` is a Python SDK that connects LangChain / LangGraph agents to [KeeperHub](https://keeperhub.com), a Web3 execution service. You provide an API key; KeeperHub handles wallet management and transaction signing inside a secure enclave ([Turnkey TEE](https://turnkey.com)). Your code never sees the private key.
 
