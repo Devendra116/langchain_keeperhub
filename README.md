@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="langchain-keeperhub" width="140" />
+  <img src="https://raw.githubusercontent.com/devendra116/langchain_keeperhub/main/assets/logo.png" alt="langchain-keeperhub" width="140" />
 </p>
 
 <h1 align="center">langchain-keeperhub</h1>
@@ -146,9 +146,9 @@ pytest
 
 ## Docs
 
-- [Getting Started](docs/getting-started.md) — install, configure, build your first agent
-- [Architecture](docs/architecture.md) — how the SDK works internally
-- [ENS Integration](docs/ens-integration.md) — ENS and Basenames resolution details
+- [Getting Started](https://github.com/devendra116/langchain_keeperhub/blob/main/docs/getting-started.md) — install, configure, build your first agent
+- [Architecture](https://github.com/devendra116/langchain_keeperhub/blob/main/docs/architecture.md) — how the SDK works internally
+- [ENS Integration](https://github.com/devendra116/langchain_keeperhub/blob/main/docs/ens-integration.md) — ENS and Basenames resolution details
 
 ## Links
 
@@ -159,6 +159,6 @@ pytest
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT — see [LICENSE](https://github.com/devendra116/langchain_keeperhub/blob/main/LICENSE).
 
 Independent community package. Not an official KeeperHub release. Trademarks belong to their owners.
